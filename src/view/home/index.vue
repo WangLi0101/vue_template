@@ -1,5 +1,7 @@
 <template>
-  <div class="home">11</div>
+  <div class="home">
+    <p class="bg-amber-400" />
+  </div>
 </template>
 
 <script setup lang="ts"></script>
