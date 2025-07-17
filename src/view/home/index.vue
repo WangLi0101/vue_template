@@ -2,7 +2,7 @@
   <div class="home">
     <el-button @click="start" type="primary">start</el-button>
     <el-button @click="stop" type="primary">stop</el-button>
-    <p class="bg-amber-400">
+    <p class="text-[red] bg-slate-800">
       {{ timeStore.seconds }}
     </p>
   </div>
