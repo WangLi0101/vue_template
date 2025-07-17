@@ -1,7 +1,7 @@
 <template>
   <div class="home">
-    <button @click="start">start</button>
-    <button @click="stop">stop</button>
+    <el-button @click="start" type="primary">start</el-button>
+    <el-button @click="stop" type="primary">stop</el-button>
     <p class="bg-amber-400">
       {{ timeStore.seconds }}
     </p>
@@ -9,7 +9,7 @@
 </template>
 
 <script setup lang="ts">
-import { useTimeStore } from "@/store/time";
+import { useTimeStore } from "@/store/modules/time";
 const timeStore = useTimeStore();
 const start = () => {
   timeStore.start(1);

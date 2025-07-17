@@ -1,7 +1,4 @@
-export interface WorkerRequest {
-  type: "start" | "stop";
-  time: number;
-}
+import type { TimeWorkerRequest } from "types/timeWorker";
 
 let timer: null | number = null;
 let num = 0;
@@ -24,7 +21,7 @@ const stopTimer = () => {
   }
 };
 
-self.addEventListener("message", function (e: MessageEvent<WorkerRequest>) {
+self.addEventListener("message", function (e: MessageEvent<TimeWorkerRequest>) {
   const res = e.data;
   switch (res.type) {
     case "start":
