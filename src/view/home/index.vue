@@ -5,15 +5,16 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted } from "vue";
+import { onMounted, onUnmounted } from "vue";
 import TRTC from "trtc-js-sdk";
 onMounted(() => {
-  getInputList();
   initStream();
 });
 const getInputList = (): Promise<string> => {
   return new Promise((resolve, reject) => {
     TRTC.getCameras().then(devices => {
+      console.log('devicelist',devices);
+      
       if (devices.length === 0) {
         reject("没有摄像头");
       }
@@ -21,6 +22,8 @@ const getInputList = (): Promise<string> => {
         return device.getCapabilities().facingMode?.includes("user");
       });
       if (res) {
+        console.log('res',res);
+        
         resolve(res.deviceId);
       } else {
         resolve(devices[0].deviceId);
@@ -28,12 +31,12 @@ const getInputList = (): Promise<string> => {
     });
   });
 };
-
+let localStream: any;
 const initStream = async () => {
   const deviceId = await getInputList();
-  console.log(deviceId);
+  console.log('id',deviceId);
 
-  const localStream = TRTC.createStream({
+   localStream = TRTC.createStream({
     userId: "1212121",
     audio: true,
     video: true,
@@ -48,6 +51,12 @@ const initStream = async () => {
     console.error("初始化本地流失败 " + error);
   }
 };
+onUnmounted(() => {
+  if (localStream) {
+    localStream.close();
+    localStream = null
+  }
+});
 </script>
 
 <style lang="scss" scoped></style>
