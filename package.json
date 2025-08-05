@@ -23,11 +23,8 @@
     "mitt": "^3.0.1",
     "pinia": "^3.0.3",
     "postcss": "^8.5.6",
-<<<<<<< HEAD
     "tailwindcss": "^4.1.11",
     "trtc-js-sdk": "^4.15.22",
-=======
->>>>>>> 23e4e321c51e2bea24349ef3d758dbe5646cfc7b
     "vue": "^3.5.17",
     "vue-router": "4"
   },
