@@ -1,8 +1,8 @@
 import { defineStore } from "pinia";
 import { ref } from "vue";
-import type { TimeWorker } from "../../types/timeWorker";
+import type { TimeWorker } from "../../../types/timeWorker";
 const worker: TimeWorker = new Worker(
-  new URL("../webWorker/time.ts", import.meta.url),
+  new URL("../../webWorker/time.ts", import.meta.url),
   {
     type: "module"
   }
