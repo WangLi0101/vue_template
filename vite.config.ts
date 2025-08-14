@@ -5,7 +5,6 @@ import { dirname, resolve } from "path";
 import AutoImport from "unplugin-auto-import/vite";
 import Components from "unplugin-vue-components/vite";
 import { ElementPlusResolver } from "unplugin-vue-components/resolvers";
-import fs from "fs";
 /** 路径查找 */
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -38,11 +37,6 @@ export default defineConfig({
     // 允许自定义端口
     port: 8080,
     // 允许自定义主机
-    host: "0.0.0.0",
-    // 开启https
-    https: {
-      key: fs.readFileSync("192.168.0.13-key.pem"),
-      cert: fs.readFileSync("192.168.0.13.pem")
-    }
+    host: "0.0.0.0"
   }
 });
