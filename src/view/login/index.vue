@@ -56,7 +56,10 @@ const handleLogin = async () => {
   try {
     const id = await login(form.username);
     ElMessage.success("Login success");
-    router.push({ name: "Home", query: { userName: form.username, userId: id } });  
+    router.push({
+      name: "Home",
+      query: { userName: form.username, userId: id }
+    });
   } catch (err) {
     ElMessage.error("Login failed");
   }
