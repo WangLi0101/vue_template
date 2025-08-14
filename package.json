@@ -19,13 +19,13 @@
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
-    "@tailwindcss/postcss": "^4.1.11",
     "element-plus": "^2.10.4",
     "mitt": "^3.0.1",
+    "nanoid": "^5.1.5",
     "pinia": "^3.0.3",
+    "pinia-plugin-persistedstate": "^4.5.0",
     "postcss": "^8.5.6",
     "socket.io-client": "^4.8.1",
-    "tailwindcss": "^4.1.11",
     "trtc-js-sdk": "^4.15.22",
     "vue": "^3.5.17",
     "vue-router": "4"

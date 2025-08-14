@@ -38,16 +38,28 @@
 import { reactive, h } from "vue";
 import { ElIcon } from "element-plus";
 import { User } from "@element-plus/icons-vue";
-
+import { useSocketStore } from "@/store/modules/socket";
+import { useRouter } from "vue-router";
 const form = reactive({
   username: ""
 });
+const { login } = useSocketStore();
+const router = useRouter();
 
 const UserIcon = h(ElIcon, null, { default: () => h(User) });
 
-const handleLogin = () => {
-  console.log("Attempting to log in with username:", form.username);
-  // Login logic would go here
+const handleLogin = async () => {
+  if (!form.username) {
+    ElMessage.error("Please enter a username");
+    return;
+  }
+  try {
+    const id = await login(form.username);
+    ElMessage.success("Login success");
+    router.push({ name: "Home", query: { userName: form.username, userId: id } });  
+  } catch (err) {
+    ElMessage.error("Login failed");
+  }
 };
 </script>
 
