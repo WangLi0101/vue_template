@@ -116,7 +116,7 @@
           class="p-8 text-center text-slate-500"
         >
           <el-icon class="text-4xl mb-2 text-slate-300">
-            <User />
+            <UserIcon />
           </el-icon>
           <p>{{ searchQuery ? "未找到匹配的联系人" : "暂无联系人" }}</p>
         </div>
@@ -169,7 +169,12 @@
             <el-button circle size="small" class="chat-action-btn">
               <el-icon><Phone /></el-icon>
             </el-button>
-            <el-button circle size="small" class="chat-action-btn">
+            <el-button
+              circle
+              size="small"
+              class="chat-action-btn"
+              @click="callVideo"
+            >
               <el-icon><VideoCamera /></el-icon>
             </el-button>
             <el-button circle size="small" class="chat-action-btn">
@@ -211,7 +216,7 @@
 
         <div v-else class="space-y-4">
           <div
-            v-for="message in socketStore.messages"
+            v-for="message in messages"
             :key="message.id"
             :class="[
               'flex items-end space-x-3',
@@ -305,76 +310,292 @@
         </div>
       </div>
     </div>
+
+    <!-- 来电弹窗 -->
+    <el-dialog
+      v-model="incomingCallVisible"
+      title="来电"
+      width="400px"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+      :show-close="false"
+      center
+      class="incoming-call-dialog"
+    >
+      <div class="text-center py-6">
+        <div class="mb-6">
+          <div
+            class="w-20 h-20 mx-auto mb-4 rounded-full flex items-center justify-center text-white text-2xl font-bold animate-pulse"
+            :style="{ backgroundColor: getUserAvatarColor(incomingCallerName) }"
+          >
+            {{ incomingCallerName.charAt(0).toUpperCase() }}
+          </div>
+          <h3 class="text-xl font-semibold text-gray-800 mb-2">
+            {{ incomingCallerName }}
+          </h3>
+          <p class="text-gray-500">视频通话邀请</p>
+        </div>
+
+        <div class="flex justify-center space-x-6">
+          <el-button
+            type="danger"
+            size="large"
+            circle
+            @click="rejectCall"
+            class="w-16 h-16 text-xl"
+          >
+            <el-icon><Phone /></el-icon>
+          </el-button>
+          <el-button
+            type="success"
+            size="large"
+            circle
+            @click="acceptCall"
+            class="w-16 h-16 text-xl"
+          >
+            <el-icon><VideoCamera /></el-icon>
+          </el-button>
+        </div>
+
+        <div class="mt-4 text-sm text-gray-400">
+          <span>拒绝</span>
+          <span class="mx-8">接听</span>
+        </div>
+      </div>
+    </el-dialog>
+
+    <VideoDialog
+      v-model="videoDialogVisible"
+      ref="videoDialogRef"
+      :peer-connection="pc"
+      @hang-up="handleHangUp"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { useSocketStore } from "@/store/modules/socket";
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { useSocketStore, type CallbackPayload } from "@/store/modules/socket";
+import {
+  computed,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  ref,
+  useTemplateRef,
+  watch
+} from "vue";
+import {
+  useSocket,
+  type AnswerPayload,
+  type OfferPayload,
+  type IceCandidatePayload,
+  type CallControlPayload,
+  type Message
+} from "@/composables/useSocket";
 import {
   ChatDotRound,
   Search,
-  User,
+  User as UserIcon,
   Phone,
   VideoCamera,
   More,
   Plus,
   Promotion
 } from "@element-plus/icons-vue";
-import { formateTime } from "@/utils";
+import { formateTime, getUserAvatarColor } from "@/utils";
+import VideoDialog from "./componse/videoDialog.vue";
+import {
+  addLocalStreamToPeerConnection,
+  createAnswer,
+  createOffer,
+  createPeerConnection,
+  getLocalStream
+} from "@/utils/rtc";
 
 const messagesContainer = ref<HTMLElement>();
 const socketStore = useSocketStore();
-const { reconnect, selectUser } = socketStore;
 const currentMessage = ref<string>("");
 const searchQuery = ref<string>("");
+// WebRTC 事件处理函数
+const handleAnswer = async (answer: AnswerPayload) => {
+  console.log("收到 answer", answer);
+  if (!pc) return;
+  try {
+    await pc.setRemoteDescription(new RTCSessionDescription(answer.answer));
+    console.log("设置远程描述成功");
+
+    // 处理缓存的ICE candidates
+    await processPendingIceCandidates();
+
+    callState.value = CallState.CONNECTED;
+    callStartTime.value = new Date();
+  } catch (error) {
+    console.error("设置远程描述失败:", error);
+    callState.value = CallState.ENDED;
+  }
+};
+
+const handleOffer = async (offer: OfferPayload) => {
+  console.log("收到 offer", offer);
+
+  // 保存来电信息
+  incomingCallFrom.value = offer.senderId;
+  incomingOffer.value = offer;
+  callState.value = CallState.INCOMING;
+
+  // 显示来电界面，等待用户选择接听或拒绝
+  console.log("显示来电界面，等待用户操作");
+};
+
+// 处理缓存的ICE candidates
+const processPendingIceCandidates = async () => {
+  if (!pc || !pc.remoteDescription) return;
+
+  console.log(`处理 ${pendingIceCandidates.length} 个缓存的 ICE candidates`);
+
+  for (const candidate of pendingIceCandidates) {
+    try {
+      await pc.addIceCandidate(new RTCIceCandidate(candidate));
+      console.log("添加缓存的 ICE candidate 成功");
+    } catch (error) {
+      console.error("添加缓存的 ICE candidate 失败:", error);
+    }
+  }
+
+  // 清空缓存
+  pendingIceCandidates.length = 0;
+};
+
+const handleIceCandidate = async (candidateData: IceCandidatePayload) => {
+  console.log("收到 ICE candidate", candidateData);
+  if (!pc) return;
+
+  // 检查是否已经设置了远程描述
+  if (pc.remoteDescription) {
+    try {
+      await pc.addIceCandidate(new RTCIceCandidate(candidateData.candidate));
+      console.log("添加 ICE candidate 成功");
+    } catch (error) {
+      console.error("添加 ICE candidate 失败:", error);
+    }
+  } else {
+    // 如果远程描述还没有设置，缓存ICE candidate
+    console.log("远程描述尚未设置，缓存 ICE candidate");
+    pendingIceCandidates.push(candidateData.candidate);
+  }
+};
+
+const handleCallControl = (control: CallControlPayload) => {
+  console.log("收到呼叫控制", control);
+
+  switch (control.action) {
+    case "accept":
+      // 对方接听了
+      if (callState.value === CallState.CALLING) {
+        callState.value = CallState.RINGING;
+        console.log("对方已接听，等待连接建立");
+      }
+      break;
+    case "reject":
+      // 对方拒绝了
+      if (callState.value === CallState.CALLING) {
+        callState.value = CallState.REJECTED;
+        ElMessage.warning("对方拒绝了通话");
+        setTimeout(() => {
+          handleHangUp();
+        }, 2000);
+      }
+      break;
+    case "hangup":
+      // 对方挂断了
+      ElMessage.info("对方已挂断");
+      handleHangUp();
+      break;
+  }
+};
+// 使用 socket hooks
+const {
+  users,
+  messages,
+  selectedUserId,
+  sendMessage,
+  sendOffer,
+  sendAnswer,
+  sendIceCandidate,
+  sendCallControl,
+  selectUser,
+  initSocket
+} = useSocket({
+  handleAnswer,
+  handleOffer,
+  handleIceCandidate,
+  handleCallControl
+});
 
 onMounted(async () => {
-  await reconnect();
+  await initSocket();
+  initPc();
 });
+
+// 组件卸载时清理资源
+onUnmounted(() => {
+  console.log("组件卸载，清理WebRTC资源");
+
+  // 停止本地流
+  if (localStream) {
+    localStream.getTracks().forEach(track => track.stop());
+    localStream = null;
+  }
+
+  // 关闭PeerConnection
+  if (pc) {
+    pc.close();
+    pc = null;
+  }
+});
+
 // 计算当前选中的用户
 const selectedUser = computed(() => {
-  return socketStore.users.find(user => user.id === socketStore.selectedUserId);
+  return users.value.find(user => user.id === selectedUserId.value);
 });
 
 // 过滤用户列表
 const filteredUsers = computed(() => {
   if (!searchQuery.value.trim()) {
-    return socketStore.users;
+    return users.value;
   }
-  return socketStore.users.filter(user =>
+  return users.value.filter(user =>
     user.userName.toLowerCase().includes(searchQuery.value.toLowerCase())
   );
 });
 
-// 获取用户头像颜色
-const getUserAvatarColor = (userName: string) => {
-  const colors = [
-    "bg-gradient-to-br from-slate-400 to-slate-500",
-    "bg-gradient-to-br from-stone-400 to-stone-500",
-    "bg-gradient-to-br from-neutral-400 to-neutral-500",
-    "bg-gradient-to-br from-zinc-400 to-zinc-500",
-    "bg-gradient-to-br from-gray-400 to-gray-500",
-    "bg-gradient-to-br from-emerald-400 to-emerald-500",
-    "bg-gradient-to-br from-teal-400 to-teal-500",
-    "bg-gradient-to-br from-cyan-400 to-cyan-500"
-  ];
+// 来电弹窗显示控制
+const incomingCallVisible = computed(() => {
+  return callState.value === CallState.INCOMING;
+});
 
-  const hash = userName.split("").reduce((acc, char) => {
-    return char.charCodeAt(0) + ((acc << 5) - acc);
-  }, 0);
-
-  return colors[Math.abs(hash) % colors.length];
-};
+// 来电用户名
+const incomingCallerName = computed(() => {
+  if (!incomingCallFrom.value) return "";
+  const caller = users.value.find(user => user.id === incomingCallFrom.value);
+  return caller?.userName || "未知用户";
+});
 
 // 发送当前消息
 const sendCurrentMessage = () => {
   if (!currentMessage.value.trim() || !selectedUser.value) return;
-  socketStore.sendMessage({
-    type: "text",
-    receiverId: selectedUser.value.id,
-    data: currentMessage.value
-  });
+  sendMessage(
+    {
+      type: "text",
+      receiverId: selectedUser.value.id,
+      data: currentMessage.value
+    },
+    (data: CallbackPayload<Message>) => {
+      if (data.code === 0) {
+        messages.value.push(data.payload!);
+      }
+    }
+  );
   currentMessage.value = "";
 };
 
@@ -388,12 +609,311 @@ const scrollToBottom = () => {
 };
 
 watch(
-  () => socketStore.messages,
+  () => messages.value,
   () => {
     scrollToBottom();
   },
   { deep: true }
 );
+
+// 通话状态常量
+const CallState = {
+  IDLE: "idle", // 空闲
+  CALLING: "calling", // 呼叫中
+  INCOMING: "incoming", // 来电
+  RINGING: "ringing", // 响铃中（等待对方接听）
+  CONNECTED: "connected", // 通话中
+  REJECTED: "rejected", // 被拒绝
+  ENDED: "ended" // 已结束
+} as const;
+
+type CallStateType = (typeof CallState)[keyof typeof CallState];
+
+const videoDialogVisible = ref(false);
+const videoDialogRef =
+  useTemplateRef<InstanceType<typeof VideoDialog>>("videoDialogRef");
+const callState = ref<CallStateType>(CallState.IDLE);
+const callStartTime = ref<Date | null>(null);
+const incomingCallFrom = ref<string>(""); // 来电用户ID
+const incomingOffer = ref<OfferPayload | null>(null); // 来电offer
+let localStream: MediaStream | null = null;
+let pc: RTCPeerConnection | null = null;
+const pendingIceCandidates: RTCIceCandidateInit[] = []; // 缓存待处理的ICE candidates
+
+// 打印详细的连接信息到控制台
+const logConnectionDetails = async () => {
+  if (!pc) return;
+
+  try {
+    const stats = await pc.getStats();
+    console.log("=== WebRTC 连接详细信息 ===");
+
+    stats.forEach(report => {
+      if (report.type === "candidate-pair" && report.state === "succeeded") {
+        console.log("✅ 成功的候选者对:");
+        console.log(`  - 状态: ${report.state}`);
+        console.log(`  - 本地候选者ID: ${report.localCandidateId}`);
+        console.log(`  - 远程候选者ID: ${report.remoteCandidateId}`);
+        console.log(`  - 提名: ${report.nominated}`);
+        console.log(`  - 可写: ${report.writable}`);
+
+        // 查找候选者详情
+        stats.forEach(candidateReport => {
+          if (candidateReport.id === report.localCandidateId) {
+            console.log(`  - 本地候选者类型: ${candidateReport.candidateType}`);
+            console.log(`  - 本地协议: ${candidateReport.protocol}`);
+            console.log(
+              `  - 本地地址: ${candidateReport.address}:${candidateReport.port}`
+            );
+          }
+          if (candidateReport.id === report.remoteCandidateId) {
+            console.log(`  - 远程候选者类型: ${candidateReport.candidateType}`);
+            console.log(`  - 远程协议: ${candidateReport.protocol}`);
+            console.log(
+              `  - 远程地址: ${candidateReport.address}:${candidateReport.port}`
+            );
+          }
+        });
+
+        // 判断连接类型
+        let connectionType = "未知";
+        stats.forEach(candidateReport => {
+          if (
+            candidateReport.id === report.localCandidateId ||
+            candidateReport.id === report.remoteCandidateId
+          ) {
+            if (candidateReport.candidateType === "host") {
+              connectionType =
+                connectionType === "未知" ? "P2P 直连" : connectionType;
+            } else if (candidateReport.candidateType === "srflx") {
+              connectionType = "P2P NAT穿透 (STUN)";
+            } else if (candidateReport.candidateType === "relay") {
+              connectionType = "TURN 中继";
+            }
+          }
+        });
+
+        console.log(`  - 🔗 连接类型: ${connectionType}`);
+
+        if (connectionType.includes("P2P")) {
+          console.log("  - ✅ 使用P2P直连，无需中继服务器");
+        } else if (connectionType.includes("TURN")) {
+          console.log("  - ⚠️ 使用TURN中继服务器转发数据");
+        }
+      }
+    });
+
+    console.log("=== 完整统计信息 ===");
+    console.log(stats);
+    console.log("========================");
+  } catch (error) {
+    console.error("获取连接详情失败:", error);
+  }
+};
+
+const initPc = () => {
+  // 清空缓存的ICE candidates
+  pendingIceCandidates.length = 0;
+
+  // 创建RTCPeerConnection
+  pc = createPeerConnection();
+
+  // 监听ICE候选者事件
+  pc.onicecandidate = event => {
+    if (event.candidate && selectedUser.value) {
+      console.log("发送 ICE candidate", event.candidate);
+      sendIceCandidate(event.candidate.toJSON(), selectedUser.value.id);
+    }
+  };
+
+  // 监听远程流事件
+  pc.ontrack = event => {
+    console.log("收到远程流", event.streams[0]);
+    console.log("远程流轨道数量:", event.streams[0].getTracks().length);
+    console.log("远程流轨道详情:", event.streams[0].getTracks());
+
+    if (videoDialogRef.value) {
+      console.log("videoDialogRef 存在，调用 playRemoteStream");
+      videoDialogRef.value.playRemoteStream(event.streams[0]);
+    } else {
+      console.error("videoDialogRef 不存在");
+    }
+  };
+
+  // 监听连接状态变化
+  pc.onconnectionstatechange = () => {
+    console.log("连接状态:", pc?.connectionState);
+    if (
+      pc?.connectionState === "failed" ||
+      pc?.connectionState === "disconnected"
+    ) {
+      console.error("WebRTC连接失败或断开");
+      ElMessage.error("视频通话连接失败");
+      handleHangUp();
+    } else if (pc?.connectionState === "connected") {
+      // 连接成功后，打印详细的连接信息
+      setTimeout(async () => {
+        await logConnectionDetails();
+      }, 2000);
+    }
+  };
+
+  // 监听ICE连接状态变化
+  pc.oniceconnectionstatechange = () => {
+    console.log("ICE连接状态:", pc?.iceConnectionState);
+    if (pc?.iceConnectionState === "failed") {
+      console.error("ICE连接失败");
+      ElMessage.error("网络连接失败，请检查网络设置");
+      handleHangUp();
+    }
+  };
+};
+// 获取流并播放
+const getLocalStreamAndPlay = async () => {
+  try {
+    const stream = await getLocalStream(true, true);
+    localStream = stream;
+    videoDialogVisible.value = true;
+    videoDialogRef.value?.playLoacalStream(localStream);
+  } catch (error) {
+    console.error("获取媒体流失败:", error);
+    ElMessage.error("无法访问摄像头或麦克风，请检查设备权限");
+    callState.value = CallState.ENDED;
+    throw error;
+  }
+};
+const callVideo = async () => {
+  try {
+    callState.value = CallState.CALLING;
+
+    // 1.获取本地流
+    await getLocalStreamAndPlay();
+    if (!pc) {
+      return;
+    }
+    addLocalStreamToPeerConnection(pc, localStream!);
+    //4.创建offer
+    const offer = await createOffer(pc);
+    sendOffer(offer, selectedUser.value!.id);
+
+    console.log("发送 offer 成功，等待对方响应");
+  } catch (error) {
+    console.error("发起视频通话失败:", error);
+    callState.value = CallState.ENDED;
+    handleHangUp();
+  }
+};
+
+// 接听通话
+const acceptCall = async () => {
+  if (!incomingOffer.value) return;
+
+  try {
+    console.log("接听通话");
+
+    // 先打开视频对话框
+    videoDialogVisible.value = true;
+
+    if (!pc) {
+      initPc();
+    }
+    if (!pc) return;
+
+    // 发送接听信号
+    sendCallControl("accept", incomingCallFrom.value);
+
+    // 获取本地流并显示（但不重复打开对话框）
+    const stream = await getLocalStream(true, true);
+    localStream = stream;
+
+    // 等待下一个tick确保videoDialogRef已经可用
+    await nextTick();
+    videoDialogRef.value?.playLoacalStream(localStream);
+
+    addLocalStreamToPeerConnection(pc, localStream!);
+
+    // 创建 answer
+    const answer = await createAnswer(pc, incomingOffer.value.offer);
+    sendAnswer(answer, incomingCallFrom.value);
+    console.log("发送 answer 成功");
+
+    // 处理缓存的ICE candidates
+    await processPendingIceCandidates();
+
+    callState.value = CallState.CONNECTED;
+    callStartTime.value = new Date();
+
+    // 清除来电信息
+    incomingOffer.value = null;
+    incomingCallFrom.value = "";
+  } catch (error) {
+    console.error("接听通话失败:", error);
+    callState.value = CallState.ENDED;
+    handleHangUp();
+  }
+};
+
+// 拒绝通话
+const rejectCall = () => {
+  console.log("拒绝通话");
+
+  if (incomingCallFrom.value) {
+    sendCallControl("reject", incomingCallFrom.value);
+  }
+
+  // 清除来电信息
+  incomingOffer.value = null;
+  incomingCallFrom.value = "";
+  callState.value = CallState.IDLE;
+};
+
+// 挂断通话
+const handleHangUp = () => {
+  console.log("挂断通话");
+
+  // 如果正在通话中，发送挂断信号
+  if (
+    callState.value === CallState.CONNECTED ||
+    callState.value === CallState.CALLING
+  ) {
+    const targetUserId = incomingCallFrom.value || selectedUser.value?.id;
+    if (targetUserId) {
+      sendCallControl("hangup", targetUserId);
+    }
+  }
+
+  callState.value = CallState.ENDED;
+  callStartTime.value = null;
+
+  // 停止本地流
+  if (localStream) {
+    localStream.getTracks().forEach(track => track.stop());
+    localStream = null;
+  }
+
+  // 关闭PeerConnection
+  if (pc) {
+    pc.close();
+    pc = null;
+  }
+
+  // 清空缓存的ICE candidates
+  pendingIceCandidates.length = 0;
+
+  // 重新初始化PeerConnection以备下次使用
+  initPc();
+
+  videoDialogVisible.value = false;
+
+  // 清除来电信息
+  incomingOffer.value = null;
+  incomingCallFrom.value = "";
+
+  // 重置状态为空闲
+  setTimeout(() => {
+    callState.value = CallState.IDLE;
+  }, 1000);
+};
 </script>
 
 <style lang="scss" scoped>
@@ -559,6 +1079,31 @@ watch(
 
   .chat-area {
     height: 60%;
+  }
+}
+
+// 来电弹窗样式
+:deep(.incoming-call-dialog) {
+  .el-dialog {
+    border-radius: 20px;
+    box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
+    backdrop-filter: blur(10px);
+    background: rgba(255, 255, 255, 0.95);
+  }
+
+  .el-dialog__header {
+    padding: 20px 20px 0;
+    text-align: center;
+
+    .el-dialog__title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #374151;
+    }
+  }
+
+  .el-dialog__body {
+    padding: 10px 20px 20px;
   }
 }
 
