@@ -54,11 +54,10 @@ const handleLogin = async () => {
     return;
   }
   try {
-    const id = await login(form.username);
+    await login(form.username);
     ElMessage.success("Login success");
     router.push({
-      name: "Chat",
-      query: { userName: form.username, userId: id }
+      name: "Chat"
     });
   } catch (err) {
     ElMessage.error("Login failed");
