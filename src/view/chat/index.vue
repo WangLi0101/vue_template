@@ -310,7 +310,7 @@
 
 <script setup lang="ts">
 import { useSocketStore } from "@/store/modules/socket";
-import { computed, onMounted, ref } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import {
   ChatDotRound,
   Search,
@@ -329,6 +329,9 @@ const { reconnect, selectUser } = socketStore;
 const currentMessage = ref<string>("");
 const searchQuery = ref<string>("");
 
+onMounted(async () => {
+  await reconnect();
+});
 // 计算当前选中的用户
 const selectedUser = computed(() => {
   return socketStore.users.find(user => user.id === socketStore.selectedUserId);
@@ -375,9 +378,22 @@ const sendCurrentMessage = () => {
   currentMessage.value = "";
 };
 
-onMounted(async () => {
-  await reconnect();
-});
+const scrollToBottom = () => {
+  nextTick(() => {
+    messagesContainer.value?.scrollTo({
+      top: messagesContainer.value.scrollHeight,
+      behavior: "instant"
+    });
+  });
+};
+
+watch(
+  () => socketStore.messages,
+  () => {
+    scrollToBottom();
+  },
+  { deep: true }
+);
 </script>
 
 <style lang="scss" scoped>
