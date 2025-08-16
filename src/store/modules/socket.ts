@@ -77,7 +77,7 @@ export const useSocketStore = defineStore(
     persist: {
       key: "socketStore",
       pick: ["name", "userId"],
-      storage: sessionStorage
+      storage: localStorage
     }
   }
 );

@@ -1,5 +1,12 @@
 import router from "./router";
-
-router.beforeEach((to, from) => {
-  //  console.log(to, from);
+import { useSocketStore } from "./store/modules/socket";
+const whiteList = ["/"];
+router.beforeEach(to => {
+  const socketStore = useSocketStore();
+  if (!whiteList.includes(to.path) && !socketStore.userId) {
+    router.push({ name: "Login" });
+  }
+  if (whiteList.includes(to.path) && socketStore.userId) {
+    router.push({ name: "Chat" });
+  }
 });
