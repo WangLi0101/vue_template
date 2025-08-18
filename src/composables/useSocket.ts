@@ -37,6 +37,7 @@ export interface AnswerPayload {
 
 export interface OfferPayload {
   offer: RTCSessionDescriptionInit;
+  type: "call" | "file";
   senderId: string;
 }
 
@@ -102,13 +103,18 @@ export function useSocket({
     );
   };
 
-  const sendOffer = (offer: RTCSessionDescriptionInit, receiverId: string) => {
+  const sendOffer = (
+    offer: RTCSessionDescriptionInit,
+    receiverId: string,
+    type: "call" | "file"
+  ) => {
     const socket = getSocket();
     socket?.emit("message", {
       type: "offer",
       payload: {
         receiverId,
-        offer
+        offer,
+        type
       }
     });
   };

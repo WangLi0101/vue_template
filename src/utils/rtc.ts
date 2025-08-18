@@ -50,3 +50,9 @@ export const createAnswer = async (
   await pc.setLocalDescription(answer);
   return answer;
 };
+
+// 创建Channel
+export const createChannel = (pc: RTCPeerConnection, channelName: string) => {
+  const channel = pc.createDataChannel(channelName);
+  return channel;
+};

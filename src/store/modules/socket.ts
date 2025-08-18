@@ -20,6 +20,7 @@ export const useSocketStore = defineStore(
       userId.value = userId.value || generateId();
       name.value = userName; // 保存用户名
       return new Promise((resolve, reject) => {
+        // https://socket.guxiaotong.cn
         socket = io("https://socket.guxiaotong.cn", {
           auth: {
             userName,

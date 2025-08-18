@@ -278,7 +278,7 @@
       <div v-if="selectedUser" class="p-6 bg-white/90 backdrop-blur-sm">
         <div class="flex items-end space-x-3">
           <!-- 附件按钮 -->
-          <el-button circle class="message-action-btn">
+          <el-button circle class="message-action-btn" @click="fileClick">
             <el-icon><Plus /></el-icon>
           </el-button>
 
@@ -296,9 +296,14 @@
             />
           </div>
 
-          <!-- 表情按钮 -->
-          <el-button circle class="message-action-btn">
-            <el-icon><ChatDotRound /></el-icon>
+          <!-- 文件按钮 -->
+          <el-button
+            @click="fileClick"
+            type="default"
+            class="file-button mr-2"
+            title="发送文件"
+          >
+            <el-icon><Document /></el-icon>
           </el-button>
 
           <!-- 发送按钮 -->
@@ -312,6 +317,14 @@
             <el-icon class="mr-1"><Promotion /></el-icon>
             发送
           </el-button>
+
+          <!-- 隐藏的文件输入 -->
+          <input
+            type="file"
+            ref="fileInput"
+            class="hidden"
+            @change="handleFileChange"
+          />
         </div>
       </div>
     </div>
@@ -321,7 +334,7 @@
       v-model="incomingCallVisible"
       :caller-name="incomingCallerName"
       :avatar-color="getUserAvatarColor(incomingCallerName)"
-      @accept="acceptCall"
+      @accept="accept"
       @reject="rejectCall"
     />
 
@@ -330,6 +343,21 @@
       ref="videoDialogRef"
       :peer-connection="pc"
       @hang-up="handleHangUp"
+    />
+    <!-- 接收文件进度对话框 -->
+    <Progress
+      v-model="fileDialogVisible"
+      :progress="fileProgress"
+      :file-info="receivedFileInfo"
+      :peer-connection="pc"
+    />
+
+    <!-- 发送文件进度对话框 -->
+    <Progress
+      v-model="sendingFileDialogVisible"
+      :progress="sendingProgress"
+      :file-info="sendingFileInfo"
+      :peer-connection="pc"
     />
   </div>
 </template>
@@ -361,18 +389,43 @@ import {
   VideoCamera,
   More,
   Plus,
-  Promotion
+  Promotion,
+  Document
 } from "@element-plus/icons-vue";
 import { formateTime, getUserAvatarColor } from "@/utils";
-import VideoDialog from "./componse/videoDialog.vue";
+import VideoDialog from "./components/videoDialog.vue";
 import IncomingCallDialog from "./components/IncomingCallDialog.vue";
 import {
   addLocalStreamToPeerConnection,
   createAnswer,
+  createChannel,
   createOffer,
   createPeerConnection,
   getLocalStream
 } from "@/utils/rtc";
+import Progress from "./components/progress.vue";
+
+// 为File System Access API添加类型声明
+interface FileSystemWriteStream {
+  write(data: ArrayBuffer | Blob | string): Promise<void>;
+  close(): Promise<void>;
+}
+
+interface FileSystemFileHandle {
+  createWritable(): Promise<FileSystemWriteStream>;
+}
+
+declare global {
+  interface Window {
+    showSaveFilePicker(options?: {
+      suggestedName?: string;
+      types?: Array<{
+        description: string;
+        accept: Record<string, string[]>;
+      }>;
+    }): Promise<FileSystemFileHandle>;
+  }
+}
 
 const messagesContainer = ref<HTMLElement>();
 const socketStore = useSocketStore();
@@ -399,7 +452,6 @@ const handleAnswer = async (answer: AnswerPayload) => {
 
 const handleOffer = async (offer: OfferPayload) => {
   console.log("收到 offer", offer);
-
   // 检查当前是否已经在通话中
   if (callState.value !== CallState.IDLE) {
     console.log("当前正在通话中，拒绝新的来电");
@@ -411,7 +463,6 @@ const handleOffer = async (offer: OfferPayload) => {
   incomingCallFrom.value = offer.senderId;
   incomingOffer.value = offer;
   callState.value = CallState.INCOMING;
-
   // 显示来电界面，等待用户选择接听或拒绝
   console.log("显示来电界面，等待用户操作");
 };
@@ -763,7 +814,7 @@ const callVideo = async (isVideo: boolean) => {
     addLocalStreamToPeerConnection(pc, localStream!);
     //4.创建offer
     const offer = await createOffer(pc);
-    sendOffer(offer, selectedUser.value!.id);
+    sendOffer(offer, selectedUser.value!.id, "call");
 
     console.log("发送 offer 成功，等待对方响应");
   } catch (error) {
@@ -772,22 +823,223 @@ const callVideo = async (isVideo: boolean) => {
     handleHangUp();
   }
 };
+const accept = () => {
+  if (!incomingOffer.value) return;
+  if (!pc) {
+    initPc();
+  }
+  if (!pc) return;
+  const { type } = incomingOffer.value;
+  switch (type) {
+    case "call":
+      acceptCall();
+      break;
+    case "file":
+      acceptFile();
+      break;
+  }
+};
+// 接收文件
+const fileDialogVisible = ref(false);
+const fileProgress = ref(0);
+const receivedFileInfo = ref<{
+  name: string;
+  type: string;
+  size: number;
+} | null>(null);
+const receivedFile = ref<Blob | null>(null);
 
+const acceptFile = async () => {
+  if (!pc || !incomingOffer.value) return;
+
+  fileDialogVisible.value = true;
+  const answer = await createAnswer(pc, incomingOffer.value.offer);
+  sendAnswer(answer, incomingCallFrom.value);
+  // 处理缓存的ICE candidates
+  await processPendingIceCandidates();
+  callState.value = CallState.CONNECTED;
+  incomingOffer.value = null;
+  incomingCallFrom.value = "";
+  // 监听数据通道
+  pc.ondatachannel = event => {
+    const dataChannel = event.channel;
+    let receivedSize = 0;
+    let fileBuffer: ArrayBuffer[] = [];
+    let lastProgressUpdate = Date.now();
+    let fileWriter: FileSystemWriteStream | null = null;
+    let tempFileHandle: FileSystemFileHandle | null = null;
+
+    // 检查是否支持File System Access API
+    const supportsFileSystem = "showSaveFilePicker" in window;
+
+    dataChannel.onmessage = async event => {
+      const data = event.data;
+
+      // 如果是字符串，可能是文件信息或完成信号
+      if (typeof data === "string") {
+        try {
+          const message = JSON.parse(data);
+
+          if (message.type === "file-info") {
+            // 接收到文件信息
+            receivedFileInfo.value = message.data;
+            console.log("接收文件信息:", receivedFileInfo.value);
+
+            // 重置接收状态
+            fileBuffer = [];
+            receivedSize = 0;
+
+            // 对于大文件（超过50MB），尝试使用File System Access API
+            if (
+              supportsFileSystem &&
+              receivedFileInfo.value &&
+              receivedFileInfo.value.size > 50 * 1024 * 1024
+            ) {
+              try {
+                // 请求用户选择保存位置
+                tempFileHandle = await window.showSaveFilePicker({
+                  suggestedName: receivedFileInfo.value.name,
+                  types: [
+                    {
+                      description: "文件",
+                      accept: {
+                        [receivedFileInfo.value.type ||
+                        "application/octet-stream"]: [".file"]
+                      }
+                    }
+                  ]
+                });
+
+                // 创建可写流
+                const writable = await tempFileHandle.createWritable();
+                fileWriter = writable;
+                console.log("使用File System API接收大文件");
+              } catch (error) {
+                console.warn("无法使用File System API，回退到内存模式:", error);
+                fileWriter = null;
+                tempFileHandle = null;
+              }
+            }
+          } else if (message.type === "file-complete") {
+            // 文件接收完成处理
+            console.log("开始处理接收完成的文件...");
+
+            if (fileWriter) {
+              // 使用File System API的情况
+              try {
+                await fileWriter.close();
+                console.log("文件已保存到用户选择的位置");
+                ElMessage.success("文件已保存");
+
+                // 重置状态
+                setTimeout(() => {
+                  fileDialogVisible.value = false;
+                  fileProgress.value = 0;
+                  receivedFileInfo.value = null;
+                  receivedFile.value = null;
+                  fileWriter = null;
+                  tempFileHandle = null;
+                }, 1000);
+              } catch (error) {
+                console.error("保存文件失败:", error);
+                ElMessage.error("保存文件失败，请重试");
+              }
+            } else {
+              // 使用内存模式的情况
+              setTimeout(() => {
+                try {
+                  console.log(`合并 ${fileBuffer.length} 个文件分片...`);
+                  const blob = new Blob(fileBuffer, {
+                    type:
+                      receivedFileInfo.value?.type || "application/octet-stream"
+                  });
+                  receivedFile.value = blob;
+
+                  // 创建下载链接
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download =
+                    receivedFileInfo.value?.name || "downloaded_file";
+                  a.click();
+                  URL.revokeObjectURL(url);
+
+                  // 重置状态
+                  setTimeout(() => {
+                    fileDialogVisible.value = false;
+                    fileProgress.value = 0;
+                    receivedFileInfo.value = null;
+                    receivedFile.value = null;
+                    // 清空缓存，释放内存
+                    fileBuffer = [];
+                  }, 1000);
+                } catch (error) {
+                  console.error("合并文件分片失败:", error);
+                  ElMessage.error("文件处理失败，请重试");
+                }
+              }, 100);
+            }
+          }
+        } catch (error) {
+          console.error("解析消息失败:", error);
+        }
+      } else if (data instanceof ArrayBuffer) {
+        // 接收文件数据分片
+        if (fileWriter) {
+          // 使用File System API直接写入文件
+          try {
+            await fileWriter.write(data);
+            receivedSize += data.byteLength;
+          } catch (error) {
+            console.error("写入文件失败:", error);
+            ElMessage.error("文件写入失败");
+          }
+        } else {
+          // 使用内存模式
+          fileBuffer.push(data);
+          receivedSize += data.byteLength;
+        }
+
+        // 更新进度 - 限制更新频率
+        if (receivedFileInfo.value) {
+          const now = Date.now();
+          const newProgress = Math.min(
+            100,
+            Math.floor((receivedSize / receivedFileInfo.value.size) * 100)
+          );
+
+          // 只有进度变化或距离上次更新超过500ms才更新UI
+          if (
+            newProgress !== fileProgress.value ||
+            now - lastProgressUpdate > 500
+          ) {
+            fileProgress.value = newProgress;
+            lastProgressUpdate = now;
+
+            // 减少日志输出频率，避免控制台阻塞
+            if (fileProgress.value % 5 === 0 || fileProgress.value === 100) {
+              console.log(`文件接收进度: ${fileProgress.value}%`);
+            }
+          }
+        }
+      }
+    };
+
+    dataChannel.onopen = () => {
+      console.log("数据通道已打开，准备接收文件");
+    };
+
+    dataChannel.onerror = error => {
+      console.error("数据通道错误:", error);
+      ElMessage.error("文件传输错误");
+    };
+  };
+};
 // 接听通话
 const acceptCall = async () => {
-  if (!incomingOffer.value) return;
-
   try {
-    console.log("接听通话");
-
     // 先打开视频对话框
     videoDialogVisible.value = true;
-
-    if (!pc) {
-      initPc();
-    }
-    if (!pc) return;
-
     // 发送接听信号
     sendCallControl("accept", incomingCallFrom.value);
 
@@ -798,11 +1050,9 @@ const acceptCall = async () => {
     // 等待下一个tick确保videoDialogRef已经可用
     await nextTick();
     videoDialogRef.value?.playLoacalStream(localStream);
-
-    addLocalStreamToPeerConnection(pc, localStream!);
-
+    addLocalStreamToPeerConnection(pc!, localStream!);
     // 创建 answer
-    const answer = await createAnswer(pc, incomingOffer.value.offer);
+    const answer = await createAnswer(pc!, incomingOffer.value!.offer);
     sendAnswer(answer, incomingCallFrom.value);
     console.log("发送 answer 成功");
 
@@ -882,6 +1132,194 @@ const handleHangUp = () => {
   setTimeout(() => {
     callState.value = CallState.IDLE;
   }, 1000);
+};
+
+// 处理文件上传
+let file: File | null = null;
+const fileInputRef = useTemplateRef<HTMLInputElement>("fileInput");
+const fileClick = () => {
+  fileInputRef.value?.click();
+};
+const handleFileChange = (e: Event) => {
+  const f = (e.target as HTMLInputElement).files?.[0];
+  if (f) {
+    file = f;
+    sendFile();
+  }
+};
+
+let channel: RTCDataChannel | null = null;
+const sendingFileInfo = ref<{
+  name: string;
+  type: string;
+  size: number;
+} | null>(null);
+const sendingProgress = ref(0);
+const sendingFileDialogVisible = ref(false);
+
+const sendFile = async () => {
+  if (!file) return;
+
+  // 设置发送文件信息
+  sendingFileInfo.value = {
+    name: file.name,
+    type: file.type,
+    size: file.size
+  };
+  sendingProgress.value = 0;
+  sendingFileDialogVisible.value = true;
+
+  initPc();
+  channel = createChannel(pc!, "file");
+
+  if (channel) {
+    channel.onopen = () => {
+      console.log("DataChannel 已建立，可以传输文件");
+      // 发送文件信息
+      if (channel && channel.readyState === "open") {
+        channel.send(
+          JSON.stringify({ type: "file-info", data: sendingFileInfo.value })
+        );
+
+        // 开始传输文件数据
+        const chunkSize = 64 * 1024; // 增加到64KB分片大小，提高传输效率
+        let offset = 0;
+        const fileReader = new FileReader();
+        // 添加缓冲区监控
+        const bufferThreshold = 1024 * 1024; // 1MB缓冲区阈值
+        let sendingPaused = false;
+        let pendingChunk: ArrayBuffer | null = null;
+        let lastProgressUpdate = Date.now();
+
+        // 监控DataChannel缓冲区状态
+        if (channel) {
+          channel.bufferedAmountLowThreshold = bufferThreshold / 2; // 设置为阈值的一半，提前恢复传输
+
+          channel.onbufferedamountlow = () => {
+            if (sendingPaused && pendingChunk) {
+              console.log("缓冲区已降至阈值以下，继续发送");
+              sendingPaused = false;
+              // 发送暂停的分片
+              channel!.send(pendingChunk);
+              pendingChunk = null;
+              // 继续读取下一个分片
+              if (offset < file!.size) {
+                setTimeout(() => readSlice(offset), 10); // 添加小延迟避免立即填满缓冲区
+              }
+            }
+          };
+        }
+
+        fileReader.onload = e => {
+          if (e.target?.result && channel?.readyState === "open") {
+            if (typeof e.target.result === "string") {
+              console.error("文件读取结果类型错误");
+              return;
+            }
+
+            // 检查缓冲区状态
+            if (channel?.bufferedAmount > bufferThreshold) {
+              console.log("缓冲区已满，暂停发送");
+              sendingPaused = true;
+              pendingChunk = e.target.result;
+              return;
+            }
+
+            try {
+              channel.send(e.target.result);
+              offset += e.target.result.byteLength;
+
+              // 更新进度 - 限制更新频率，减少UI压力
+              if (file) {
+                const now = Date.now();
+                const newProgress = Math.min(
+                  100,
+                  Math.floor((offset / file.size) * 100)
+                );
+
+                // 只有进度变化超过1%或距离上次更新超过500ms才更新UI
+                if (
+                  newProgress !== sendingProgress.value ||
+                  now - lastProgressUpdate > 500
+                ) {
+                  sendingProgress.value = newProgress;
+                  lastProgressUpdate = now;
+
+                  // 减少日志输出频率
+                  if (newProgress % 5 === 0 || newProgress === 100) {
+                    console.log(`文件传输进度: ${newProgress}%`);
+                  }
+                }
+
+                // 继续读取下一个分片
+                if (offset < file.size) {
+                  // 根据缓冲区状态动态调整延迟
+                  const delay =
+                    channel?.bufferedAmount > bufferThreshold / 2 ? 50 : 5;
+                  setTimeout(() => {
+                    readSlice(offset);
+                  }, delay);
+                } else {
+                  console.log("文件传输完成");
+                  if (channel) {
+                    channel.send(JSON.stringify({ type: "file-complete" }));
+                  }
+
+                  // 传输完成后关闭对话框
+                  setTimeout(() => {
+                    sendingFileDialogVisible.value = false;
+                    sendingProgress.value = 0;
+                    sendingFileInfo.value = null;
+                    file = null;
+                  }, 1000);
+                }
+              }
+            } catch (error) {
+              console.error("发送文件分片失败:", error);
+              // 尝试重新发送当前分片
+              setTimeout(() => {
+                if (channel?.readyState === "open") {
+                  console.log("尝试重新发送分片");
+                  readSlice(offset);
+                } else {
+                  ElMessage.error("文件传输连接已断开");
+                }
+              }, 1000);
+            }
+          }
+        };
+
+        fileReader.onerror = error => {
+          console.error("文件读取错误:", error);
+          ElMessage.error("文件读取错误");
+          sendingFileDialogVisible.value = false;
+        };
+
+        const readSlice = (o: number) => {
+          if (file) {
+            const slice = file.slice(o, o + chunkSize);
+            fileReader.readAsArrayBuffer(slice);
+          }
+        };
+
+        // 开始读取第一个分片
+        readSlice(0);
+      }
+    };
+
+    channel.onerror = error => {
+      console.error("数据通道错误:", error);
+      ElMessage.error("文件传输错误");
+      sendingFileDialogVisible.value = false;
+    };
+  }
+
+  // 1. 创建offer
+  const offer = await createOffer(pc!);
+  // 2. 发送offer
+  if (selectedUser.value) {
+    sendOffer(offer, selectedUser.value.id, "file");
+  }
 };
 </script>
 
