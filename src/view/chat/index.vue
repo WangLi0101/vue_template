@@ -458,7 +458,7 @@ const handleOffer = async (offer: OfferPayload) => {
     sendCallControl("busy", offer.senderId);
     return;
   }
-
+  initPc();
   // 保存来电信息
   incomingCallFrom.value = offer.senderId;
   incomingOffer.value = offer;
@@ -554,7 +554,6 @@ const {
 
 onMounted(async () => {
   await initSocket();
-  initPc();
 });
 
 // 组件卸载时清理资源
@@ -568,10 +567,7 @@ onUnmounted(() => {
   }
 
   // 关闭PeerConnection
-  if (pc) {
-    pc.close();
-    pc = null;
-  }
+  destoryPc();
 });
 
 // 计算当前选中的用户
@@ -734,7 +730,7 @@ const logConnectionDetails = async () => {
 const initPc = () => {
   // 清空缓存的ICE candidates
   pendingIceCandidates.length = 0;
-
+  if (pc) return;
   // 创建RTCPeerConnection
   pc = createPeerConnection();
 
@@ -788,6 +784,12 @@ const initPc = () => {
     }
   };
 };
+const destoryPc = () => {
+  if (pc) {
+    pc.close();
+    pc = null;
+  }
+};
 // 获取流并播放
 const getLocalStreamAndPlay = async (isVideo: boolean) => {
   try {
@@ -805,17 +807,13 @@ const getLocalStreamAndPlay = async (isVideo: boolean) => {
 const callVideo = async (isVideo: boolean) => {
   try {
     callState.value = CallState.CALLING;
-
+    initPc();
     // 1.获取本地流
     await getLocalStreamAndPlay(isVideo);
-    if (!pc) {
-      return;
-    }
-    addLocalStreamToPeerConnection(pc, localStream!);
+    addLocalStreamToPeerConnection(pc!, localStream!);
     //4.创建offer
-    const offer = await createOffer(pc);
+    const offer = await createOffer(pc!);
     sendOffer(offer, selectedUser.value!.id, "call");
-
     console.log("发送 offer 成功，等待对方响应");
   } catch (error) {
     console.error("发起视频通话失败:", error);
@@ -825,10 +823,6 @@ const callVideo = async (isVideo: boolean) => {
 };
 const accept = () => {
   if (!incomingOffer.value) return;
-  if (!pc) {
-    initPc();
-  }
-  if (!pc) return;
   const { type } = incomingOffer.value;
   switch (type) {
     case "call":
@@ -946,12 +940,7 @@ const acceptFile = async () => {
                   }
 
                   // 关闭并重置PeerConnection
-                  if (pc) {
-                    pc.close();
-                    pc = null;
-                    // 重新初始化，以便下次传输
-                    initPc();
-                  }
+                  destoryPc();
                 }, 1000);
               } catch (error) {
                 console.error("保存文件失败:", error);
@@ -992,12 +981,7 @@ const acceptFile = async () => {
                     }
 
                     // 关闭并重置PeerConnection
-                    if (pc) {
-                      pc.close();
-                      pc = null;
-                      // 重新初始化，以便下次传输
-                      initPc();
-                    }
+                    destoryPc();
                   }, 1000);
                 } catch (error) {
                   console.error("合并文件分片失败:", error);
@@ -1058,6 +1042,11 @@ const acceptFile = async () => {
     dataChannel.onerror = error => {
       console.error("数据通道错误:", error);
       ElMessage.error("文件传输错误");
+    };
+    dataChannel.onclose = () => {
+      console.log("数据通道已关闭");
+      callState.value = CallState.IDLE;
+      handleHangUp();
     };
   };
 };
@@ -1137,17 +1126,7 @@ const handleHangUp = () => {
   }
 
   // 关闭PeerConnection
-  if (pc) {
-    pc.close();
-    pc = null;
-  }
-
-  // 清空缓存的ICE candidates
-  pendingIceCandidates.length = 0;
-
-  // 重新初始化PeerConnection以备下次使用
-  initPc();
-
+  destoryPc();
   videoDialogVisible.value = false;
 
   // 清除来电信息
@@ -1155,9 +1134,7 @@ const handleHangUp = () => {
   incomingCallFrom.value = "";
 
   // 重置状态为空闲
-  setTimeout(() => {
-    callState.value = CallState.IDLE;
-  }, 1000);
+  callState.value = CallState.IDLE;
 };
 
 // 处理文件上传
@@ -1194,10 +1171,8 @@ const sendFile = async () => {
   };
   sendingProgress.value = 0;
   sendingFileDialogVisible.value = true;
-
   initPc();
   channel = createChannel(pc!, "file");
-
   if (channel) {
     channel.onopen = () => {
       console.log("DataChannel 已建立，可以传输文件");
@@ -1297,18 +1272,14 @@ const sendFile = async () => {
                     sendingProgress.value = 0;
                     sendingFileInfo.value = null;
                     file = null;
-
+                    callState.value = CallState.IDLE;
                     // 关闭数据通道
                     if (channel) {
                       channel.close();
                       channel = null;
                     }
-
                     // 关闭并重置PeerConnection
-                    if (pc) {
-                      pc.close();
-                      pc = null;
-                    }
+                    destoryPc();
                   }, 1000);
                 }
               }

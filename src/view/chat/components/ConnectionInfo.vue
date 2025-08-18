@@ -93,33 +93,42 @@ const startStatsMonitoring = () => {
           const localCandidateId = report.localCandidateId;
           const remoteCandidateId = report.remoteCandidateId;
 
+          // 声明候选者类型变量
+          let localCandidateType = "";
+          let remoteCandidateType = "";
+
           // 查找对应的候选者详情
           stats.forEach(candidateReport => {
             if (candidateReport.id === localCandidateId) {
               localCandidate = `${candidateReport.candidateType} (${candidateReport.protocol})`;
+              localCandidateType = candidateReport.candidateType;
             }
             if (candidateReport.id === remoteCandidateId) {
               remoteCandidate = `${candidateReport.candidateType} (${candidateReport.protocol})`;
+              remoteCandidateType = candidateReport.candidateType;
             }
           });
 
-          // 判断连接类型
-          if (
-            localCandidate.includes("host") &&
-            remoteCandidate.includes("host")
-          ) {
+          // 统一的连接类型判断逻辑
+          if (localCandidateType === "host" && remoteCandidateType === "host") {
             connectionType = "P2P 直连 (host-host)";
           } else if (
-            localCandidate.includes("srflx") ||
-            remoteCandidate.includes("srflx")
+            localCandidateType === "srflx" ||
+            remoteCandidateType === "srflx"
           ) {
             connectionType = "P2P NAT穿透 (STUN)";
           } else if (
-            localCandidate.includes("relay") ||
-            remoteCandidate.includes("relay")
+            localCandidateType === "relay" ||
+            remoteCandidateType === "relay"
           ) {
             connectionType = "TURN 中继";
+          } else if (
+            localCandidateType === "host" ||
+            remoteCandidateType === "host"
+          ) {
+            connectionType = "P2P 直连";
           } else {
+            // 如果无法匹配标准类型，显示详细信息
             connectionType = `${localCandidate} ↔ ${remoteCandidate}`;
           }
         }

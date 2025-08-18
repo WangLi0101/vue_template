@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 import { fileURLToPath } from "url";
 import { dirname, resolve } from "path";
+import { readFileSync } from "fs";
 import AutoImport from "unplugin-auto-import/vite";
 import Components from "unplugin-vue-components/vite";
 import { ElementPlusResolver } from "unplugin-vue-components/resolvers";
@@ -11,6 +12,7 @@ const __dirname = dirname(__filename);
 const pathResolve = (dir: string): string => {
   return resolve(__dirname, ".", dir);
 };
+const certPath = pathResolve("cert");
 
 /** 设置别名 */
 const alias: Record<string, string> = {
@@ -37,6 +39,11 @@ export default defineConfig({
     // 允许自定义端口
     port: 8080,
     // 允许自定义主机
-    host: "0.0.0.0"
+    host: "0.0.0.0",
+    // 开启https
+    https: {
+      cert: readFileSync(resolve(certPath, "192.168.31.190.pem")),
+      key: readFileSync(resolve(certPath, "192.168.31.190-key.pem"))
+    }
   }
 });
