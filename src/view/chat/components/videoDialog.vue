@@ -165,7 +165,7 @@ const playLoacalStream = (stream: MediaStream) => {
 // 播放远程流
 const playRemoteStream = (stream: MediaStream) => {
   console.log("playRemoteStream 被调用", stream);
-  console.log("stream tracks:", stream.getTracks());
+  console.log("rmotestream tracks:", stream.getTracks());
 
   nextTick(async () => {
     if (!remoteVideoRef.value || !remoteAudioRef.value) {

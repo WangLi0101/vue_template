@@ -566,13 +566,6 @@ const {
 
 onMounted(async () => {
   await initSocket();
-
-  // 测试ICE服务器状态
-  const status = await testIceServersStatus(iceConfiguration.iceServers);
-  console.log("STUN 可用:", status.stun);
-  console.log("TURN 可用:", status.turn);
-  console.log("候选地址列表:");
-  status.candidates.forEach(c => console.log(c.type, c.candidate));
 });
 
 // 组件卸载时清理资源
