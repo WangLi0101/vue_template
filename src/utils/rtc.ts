@@ -13,6 +13,9 @@ export const createPeerConnection = () => {
   const iceConfiguration = {
     iceServers: [
       {
+        urls: "stun:sturnturn.guxiaotong.cn:3478"
+      },
+      {
         urls: "turn:sturnturn.guxiaotong.cn:3478",
         username: "testuser",
         credential: "testpassword"

@@ -939,6 +939,19 @@ const acceptFile = async () => {
                   receivedFile.value = null;
                   fileWriter = null;
                   tempFileHandle = null;
+
+                  // 关闭数据通道
+                  if (dataChannel) {
+                    dataChannel.close();
+                  }
+
+                  // 关闭并重置PeerConnection
+                  if (pc) {
+                    pc.close();
+                    pc = null;
+                    // 重新初始化，以便下次传输
+                    initPc();
+                  }
                 }, 1000);
               } catch (error) {
                 console.error("保存文件失败:", error);
@@ -970,8 +983,21 @@ const acceptFile = async () => {
                     fileProgress.value = 0;
                     receivedFileInfo.value = null;
                     receivedFile.value = null;
-                    // 清空缓存，释放内存
-                    fileBuffer = [];
+                    fileWriter = null;
+                    tempFileHandle = null;
+
+                    // 关闭数据通道
+                    if (dataChannel) {
+                      dataChannel.close();
+                    }
+
+                    // 关闭并重置PeerConnection
+                    if (pc) {
+                      pc.close();
+                      pc = null;
+                      // 重新初始化，以便下次传输
+                      initPc();
+                    }
                   }, 1000);
                 } catch (error) {
                   console.error("合并文件分片失败:", error);
@@ -1265,12 +1291,24 @@ const sendFile = async () => {
                     channel.send(JSON.stringify({ type: "file-complete" }));
                   }
 
-                  // 传输完成后关闭对话框
+                  // 传输完成后关闭对话框并清理资源
                   setTimeout(() => {
                     sendingFileDialogVisible.value = false;
                     sendingProgress.value = 0;
                     sendingFileInfo.value = null;
                     file = null;
+
+                    // 关闭数据通道
+                    if (channel) {
+                      channel.close();
+                      channel = null;
+                    }
+
+                    // 关闭并重置PeerConnection
+                    if (pc) {
+                      pc.close();
+                      pc = null;
+                    }
                   }, 1000);
                 }
               }
