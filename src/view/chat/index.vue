@@ -166,14 +166,19 @@
           </div>
           <!-- 聊天操作按钮 -->
           <div class="flex items-center space-x-2">
-            <el-button circle size="small" class="chat-action-btn">
+            <el-button
+              circle
+              size="small"
+              class="chat-action-btn"
+              @click="callVideo(false)"
+            >
               <el-icon><Phone /></el-icon>
             </el-button>
             <el-button
               circle
               size="small"
               class="chat-action-btn"
-              @click="callVideo"
+              @click="callVideo(true)"
             >
               <el-icon><VideoCamera /></el-icon>
             </el-button>
@@ -312,57 +317,13 @@
     </div>
 
     <!-- 来电弹窗 -->
-    <el-dialog
+    <IncomingCallDialog
       v-model="incomingCallVisible"
-      title="来电"
-      width="400px"
-      :close-on-click-modal="false"
-      :close-on-press-escape="false"
-      :show-close="false"
-      center
-      class="incoming-call-dialog"
-    >
-      <div class="text-center py-6">
-        <div class="mb-6">
-          <div
-            class="w-20 h-20 mx-auto mb-4 rounded-full flex items-center justify-center text-white text-2xl font-bold animate-pulse"
-            :style="{ backgroundColor: getUserAvatarColor(incomingCallerName) }"
-          >
-            {{ incomingCallerName.charAt(0).toUpperCase() }}
-          </div>
-          <h3 class="text-xl font-semibold text-gray-800 mb-2">
-            {{ incomingCallerName }}
-          </h3>
-          <p class="text-gray-500">视频通话邀请</p>
-        </div>
-
-        <div class="flex justify-center space-x-6">
-          <el-button
-            type="danger"
-            size="large"
-            circle
-            @click="rejectCall"
-            class="w-16 h-16 text-xl"
-          >
-            <el-icon><Phone /></el-icon>
-          </el-button>
-          <el-button
-            type="success"
-            size="large"
-            circle
-            @click="acceptCall"
-            class="w-16 h-16 text-xl"
-          >
-            <el-icon><VideoCamera /></el-icon>
-          </el-button>
-        </div>
-
-        <div class="mt-4 text-sm text-gray-400">
-          <span>拒绝</span>
-          <span class="mx-8">接听</span>
-        </div>
-      </div>
-    </el-dialog>
+      :caller-name="incomingCallerName"
+      :avatar-color="getUserAvatarColor(incomingCallerName)"
+      @accept="acceptCall"
+      @reject="rejectCall"
+    />
 
     <VideoDialog
       v-model="videoDialogVisible"
@@ -404,6 +365,7 @@ import {
 } from "@element-plus/icons-vue";
 import { formateTime, getUserAvatarColor } from "@/utils";
 import VideoDialog from "./componse/videoDialog.vue";
+import IncomingCallDialog from "./components/IncomingCallDialog.vue";
 import {
   addLocalStreamToPeerConnection,
   createAnswer,
@@ -437,6 +399,13 @@ const handleAnswer = async (answer: AnswerPayload) => {
 
 const handleOffer = async (offer: OfferPayload) => {
   console.log("收到 offer", offer);
+
+  // 检查当前是否已经在通话中
+  if (callState.value !== CallState.IDLE) {
+    console.log("当前正在通话中，拒绝新的来电");
+    sendCallControl("busy", offer.senderId);
+    return;
+  }
 
   // 保存来电信息
   incomingCallFrom.value = offer.senderId;
@@ -769,9 +738,9 @@ const initPc = () => {
   };
 };
 // 获取流并播放
-const getLocalStreamAndPlay = async () => {
+const getLocalStreamAndPlay = async (isVideo: boolean) => {
   try {
-    const stream = await getLocalStream(true, true);
+    const stream = await getLocalStream(true, isVideo);
     localStream = stream;
     videoDialogVisible.value = true;
     videoDialogRef.value?.playLoacalStream(localStream);
@@ -782,12 +751,12 @@ const getLocalStreamAndPlay = async () => {
     throw error;
   }
 };
-const callVideo = async () => {
+const callVideo = async (isVideo: boolean) => {
   try {
     callState.value = CallState.CALLING;
 
     // 1.获取本地流
-    await getLocalStreamAndPlay();
+    await getLocalStreamAndPlay(isVideo);
     if (!pc) {
       return;
     }
@@ -1079,31 +1048,6 @@ const handleHangUp = () => {
 
   .chat-area {
     height: 60%;
-  }
-}
-
-// 来电弹窗样式
-:deep(.incoming-call-dialog) {
-  .el-dialog {
-    border-radius: 20px;
-    box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
-    backdrop-filter: blur(10px);
-    background: rgba(255, 255, 255, 0.95);
-  }
-
-  .el-dialog__header {
-    padding: 20px 20px 0;
-    text-align: center;
-
-    .el-dialog__title {
-      font-size: 18px;
-      font-weight: 600;
-      color: #374151;
-    }
-  }
-
-  .el-dialog__body {
-    padding: 10px 20px 20px;
   }
 }
 

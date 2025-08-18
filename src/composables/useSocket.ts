@@ -46,7 +46,7 @@ export interface IceCandidatePayload {
 }
 
 export interface CallControlPayload {
-  action: "accept" | "reject" | "hangup";
+  action: "accept" | "reject" | "hangup" | "busy";
   senderId: string;
 }
 
@@ -142,7 +142,7 @@ export function useSocket({
   };
 
   const sendCallControl = (
-    action: "accept" | "reject" | "hangup",
+    action: "accept" | "reject" | "hangup" | "busy",
     receiverId: string
   ) => {
     const socket = getSocket();
