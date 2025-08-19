@@ -32,11 +32,11 @@ declare global {
  * @param onProgress 进度回调函数
  * @returns 返回一个Promise，在文件发送完成时解析
  */
-export const sendFileInChunks = async (
+export async function sendFileInChunks(
   file: File,
   channel: RTCDataChannel,
   onProgress: (progress: number) => void
-): Promise<void> => {
+): Promise<void> {
   return new Promise((resolve, reject) => {
     if (!file || !channel || channel.readyState !== "open") {
       reject(new Error("无效的文件或数据通道未打开"));
@@ -54,48 +54,32 @@ export const sendFileInChunks = async (
     // 设置传输参数
     const chunkSize = 64 * 1024; // 64KB分片大小
     let offset = 0;
-    const fileReader = new FileReader();
     const bufferThreshold = 1024 * 1024; // 1MB缓冲区阈值
-    let sendingPaused = false;
-    let pendingChunk: ArrayBuffer | null = null;
+    let isSending = true;
     let lastProgressUpdate = Date.now();
 
     // 监控DataChannel缓冲区状态
-    channel.bufferedAmountLowThreshold = bufferThreshold / 2; // 设置为阈值的一半
+    channel.bufferedAmountLowThreshold = bufferThreshold / 2;
 
     channel.onbufferedamountlow = () => {
-      if (sendingPaused && pendingChunk) {
-        console.log("缓冲区已降至阈值以下，继续发送");
-        sendingPaused = false;
-        // 发送暂停的分片
-        channel.send(pendingChunk);
-        pendingChunk = null;
-        // 继续读取下一个分片
-        if (offset < file.size) {
-          setTimeout(() => readSlice(offset), 10); // 添加小延迟避免立即填满缓冲区
-        }
-      }
+      console.log("缓冲区已降至阈值以下，继续发送");
+      isSending = true;
+      pump();
     };
 
-    fileReader.onload = e => {
-      if (e.target?.result && channel.readyState === "open") {
-        if (typeof e.target.result === "string") {
-          console.error("文件读取结果类型错误");
-          reject(new Error("文件读取结果类型错误"));
-          return;
-        }
-
-        // 检查缓冲区状态
+    async function pump() {
+      while (isSending && offset < file.size) {
         if (channel.bufferedAmount > bufferThreshold) {
           console.log("缓冲区已满，暂停发送");
-          sendingPaused = true;
-          pendingChunk = e.target.result;
+          isSending = false;
           return;
         }
 
         try {
-          channel.send(e.target.result);
-          offset += e.target.result.byteLength;
+          const slice = file.slice(offset, offset + chunkSize);
+          const buffer = await slice.arrayBuffer();
+          channel.send(buffer);
+          offset += buffer.byteLength;
 
           // 更新进度 - 限制更新频率
           const now = Date.now();
@@ -118,47 +102,30 @@ export const sendFileInChunks = async (
             }
           }
 
-          // 继续读取下一个分片
-          if (offset < file.size) {
-            // 根据缓冲区状态动态调整延迟
-            const delay = channel.bufferedAmount > bufferThreshold / 2 ? 50 : 5;
-            setTimeout(() => {
-              readSlice(offset);
-            }, delay);
-          } else {
-            console.log("文件传输完成");
-            channel.send(JSON.stringify({ type: "file-complete" }));
-            resolve();
-          }
+          // 动态调整延迟
+          const delay = channel.bufferedAmount > bufferThreshold / 2 ? 50 : 5;
+          await new Promise(r => setTimeout(r, delay));
         } catch (error) {
           console.error("发送文件分片失败:", error);
-          // 尝试重新发送当前分片
-          setTimeout(() => {
-            if (channel.readyState === "open") {
-              console.log("尝试重新发送分片");
-              readSlice(offset);
-            } else {
-              reject(new Error("文件传输连接已断开"));
-            }
-          }, 1000);
+          // 短暂延迟后重试
+          await new Promise(r => setTimeout(r, 1000));
+          if (channel.readyState !== "open") {
+            reject(new Error("文件传输连接已断开"));
+            return;
+          }
         }
       }
-    };
 
-    fileReader.onerror = error => {
-      console.error("文件读取错误:", error);
-      reject(new Error("文件读取错误"));
-    };
-
-    const readSlice = (o: number) => {
-      const slice = file.slice(o, o + chunkSize);
-      fileReader.readAsArrayBuffer(slice);
-    };
-
-    // 开始读取第一个分片
-    readSlice(0);
+      if (offset >= file.size) {
+        console.log("文件传输完成");
+        channel.send(JSON.stringify({ type: "file-complete" }));
+        resolve();
+      }
+    }
+    // 开始发送
+    pump();
   });
-};
+}
 
 /**
  * 接收文件
