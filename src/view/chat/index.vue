@@ -476,28 +476,6 @@ import {
 import { sendFileInChunks, receiveFile, downloadFile } from "@/utils/file";
 import Progress from "./components/progress.vue";
 
-// 为File System Access API添加类型声明
-interface FileSystemWriteStream {
-  write(data: ArrayBuffer | Blob | string): Promise<void>;
-  close(): Promise<void>;
-}
-
-interface FileSystemFileHandle {
-  createWritable(): Promise<FileSystemWriteStream>;
-}
-
-declare global {
-  interface Window {
-    showSaveFilePicker(options?: {
-      suggestedName?: string;
-      types?: Array<{
-        description: string;
-        accept: Record<string, string[]>;
-      }>;
-    }): Promise<FileSystemFileHandle>;
-  }
-}
-
 const messagesContainer = ref<HTMLElement>();
 const socketStore = useSocketStore();
 const currentMessage = ref<string>("");
