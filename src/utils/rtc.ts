@@ -212,3 +212,94 @@ export const testIceServers = async () => {
     ElMessage.error("测试ICE服务器失败，请查看控制台获取详细信息");
   }
 };
+
+// 打印详细的连接信息到控制台
+export const logConnectionDetails = async (pc: RTCPeerConnection) => {
+  if (!pc) return;
+
+  try {
+    const stats = await pc.getStats();
+    console.log("=== WebRTC 连接详细信息 ===", stats);
+
+    // 将统计信息转换为数组以便使用数组方法
+    const statsArray = Array.from(stats.values());
+
+    // 查找成功的候选者对
+    const successPair = statsArray.find(
+      report => report.type === "candidate-pair" && report.state === "succeeded"
+    );
+
+    if (successPair) {
+      console.log("✅ 成功的候选者对:");
+      console.log(`  - 状态: ${successPair.state}`);
+      console.log(`  - 本地候选者ID: ${successPair.localCandidateId}`);
+      console.log(`  - 远程候选者ID: ${successPair.remoteCandidateId}`);
+      console.log(`  - 提名: ${successPair.nominated}`);
+      console.log(`  - 可写: ${successPair.writable}`);
+
+      // 查找候选者详情
+      const localCandidate = statsArray.find(
+        report => report.id === successPair.localCandidateId
+      );
+      const remoteCandidate = statsArray.find(
+        report => report.id === successPair.remoteCandidateId
+      );
+
+      // 输出本地候选者信息
+      if (localCandidate) {
+        console.log(`  - 本地候选者类型: ${localCandidate.candidateType}`);
+        console.log(`  - 本地协议: ${localCandidate.protocol}`);
+        console.log(
+          `  - 本地地址: ${localCandidate.address}:${localCandidate.port}`
+        );
+      }
+
+      // 输出远程候选者信息
+      if (remoteCandidate) {
+        console.log(`  - 远程候选者类型: ${remoteCandidate.candidateType}`);
+        console.log(`  - 远程协议: ${remoteCandidate.protocol}`);
+        console.log(
+          `  - 远程地址: ${remoteCandidate.address}:${remoteCandidate.port}`
+        );
+      }
+
+      // 判断连接类型
+      const connectionType = determineConnectionType(
+        localCandidate,
+        remoteCandidate
+      );
+      console.log(`  - 🔗 连接类型: ${connectionType}`);
+
+      if (connectionType.includes("P2P")) {
+        console.log("  - ✅ 使用P2P直连，无需中继服务器");
+      } else if (connectionType.includes("TURN")) {
+        console.log("  - ⚠️ 使用TURN中继服务器转发数据");
+      }
+    }
+
+    console.log("=== 完整统计信息 ===");
+    console.log(stats);
+    console.log("========================");
+  } catch (error) {
+    console.error("获取连接详情失败:", error);
+  }
+};
+
+// 辅助函数：确定连接类型
+export const determineConnectionType = (
+  localCandidate?: any,
+  remoteCandidate?: any
+) => {
+  if (!localCandidate && !remoteCandidate) return "未知";
+
+  const candidateTypes = [
+    localCandidate?.candidateType,
+    remoteCandidate?.candidateType
+  ];
+
+  if (candidateTypes.includes("relay")) return "TURN 中继";
+  if (candidateTypes.includes("srflx")) return "P2P NAT穿透 (STUN)";
+  if (candidateTypes.includes("host")) return "P2P 直连";
+
+  return "未知";
+};

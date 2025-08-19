@@ -474,6 +474,7 @@ import {
   createOffer,
   createPeerConnection,
   getLocalStream,
+  logConnectionDetails,
   testIceServers
 } from "@/utils/rtc";
 import { sendFileInChunks, receiveFile, downloadFile } from "@/utils/file";
@@ -747,77 +748,6 @@ let localStream: MediaStream | null = null;
 let pc: RTCPeerConnection | null = null;
 const pendingIceCandidates: RTCIceCandidateInit[] = []; // 缓存待处理的ICE candidates
 
-// 打印详细的连接信息到控制台
-const logConnectionDetails = async () => {
-  if (!pc) return;
-
-  try {
-    const stats = await pc.getStats();
-    console.log("=== WebRTC 连接详细信息 ===");
-
-    stats.forEach(report => {
-      if (report.type === "candidate-pair" && report.state === "succeeded") {
-        console.log("✅ 成功的候选者对:");
-        console.log(`  - 状态: ${report.state}`);
-        console.log(`  - 本地候选者ID: ${report.localCandidateId}`);
-        console.log(`  - 远程候选者ID: ${report.remoteCandidateId}`);
-        console.log(`  - 提名: ${report.nominated}`);
-        console.log(`  - 可写: ${report.writable}`);
-
-        // 查找候选者详情
-        stats.forEach(candidateReport => {
-          if (candidateReport.id === report.localCandidateId) {
-            console.log(`  - 本地候选者类型: ${candidateReport.candidateType}`);
-            console.log(`  - 本地协议: ${candidateReport.protocol}`);
-            console.log(
-              `  - 本地地址: ${candidateReport.address}:${candidateReport.port}`
-            );
-          }
-          if (candidateReport.id === report.remoteCandidateId) {
-            console.log(`  - 远程候选者类型: ${candidateReport.candidateType}`);
-            console.log(`  - 远程协议: ${candidateReport.protocol}`);
-            console.log(
-              `  - 远程地址: ${candidateReport.address}:${candidateReport.port}`
-            );
-          }
-        });
-
-        // 判断连接类型
-        let connectionType = "未知";
-        stats.forEach(candidateReport => {
-          if (
-            candidateReport.id === report.localCandidateId ||
-            candidateReport.id === report.remoteCandidateId
-          ) {
-            if (candidateReport.candidateType === "host") {
-              connectionType =
-                connectionType === "未知" ? "P2P 直连" : connectionType;
-            } else if (candidateReport.candidateType === "srflx") {
-              connectionType = "P2P NAT穿透 (STUN)";
-            } else if (candidateReport.candidateType === "relay") {
-              connectionType = "TURN 中继";
-            }
-          }
-        });
-
-        console.log(`  - 🔗 连接类型: ${connectionType}`);
-
-        if (connectionType.includes("P2P")) {
-          console.log("  - ✅ 使用P2P直连，无需中继服务器");
-        } else if (connectionType.includes("TURN")) {
-          console.log("  - ⚠️ 使用TURN中继服务器转发数据");
-        }
-      }
-    });
-
-    console.log("=== 完整统计信息 ===");
-    console.log(stats);
-    console.log("========================");
-  } catch (error) {
-    console.error("获取连接详情失败:", error);
-  }
-};
-
 const initPc = () => {
   // 清空缓存的ICE candidates
   pendingIceCandidates.length = 0;
@@ -859,9 +789,7 @@ const initPc = () => {
       handleHangUp();
     } else if (pc?.connectionState === "connected") {
       // 连接成功后，打印详细的连接信息
-      setTimeout(async () => {
-        await logConnectionDetails();
-      }, 2000);
+      logConnectionDetails(pc!);
     }
   };
 
