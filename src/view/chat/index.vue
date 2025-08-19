@@ -150,7 +150,10 @@
         >
           <el-icon><ArrowLeft /></el-icon>
         </el-button>
-        <div v-if="selectedUser" class="flex items-center justify-between">
+        <div
+          v-if="selectedUser"
+          class="flex items-center justify-between w-full"
+        >
           <div class="flex items-center space-x-4">
             <div class="relative">
               <div
