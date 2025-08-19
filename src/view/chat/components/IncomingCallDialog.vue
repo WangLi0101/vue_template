@@ -2,7 +2,8 @@
   <el-dialog
     v-model="visible"
     title="来电"
-    width="400px"
+    width="90%"
+    :max-width="400"
     :close-on-click-modal="false"
     :close-on-press-escape="false"
     :show-close="false"
@@ -23,13 +24,13 @@
         <p class="text-gray-500">视频通话邀请</p>
       </div>
 
-      <div class="flex justify-center space-x-6">
+      <div class="flex justify-center space-x-4 md:space-x-6">
         <el-button
           type="danger"
           size="large"
           circle
           @click="handleReject"
-          class="w-16 h-16 text-xl"
+          class="w-14 h-14 md:w-16 md:h-16 text-lg md:text-xl"
         >
           <el-icon><Phone /></el-icon>
         </el-button>
@@ -38,7 +39,7 @@
           size="large"
           circle
           @click="handleAccept"
-          class="w-16 h-16 text-xl"
+          class="w-14 h-14 md:w-16 md:h-16 text-lg md:text-xl"
         >
           <el-icon><VideoCamera /></el-icon>
         </el-button>
@@ -92,25 +93,36 @@ const handleReject = () => {
 // 来电弹窗样式
 :deep(.incoming-call-dialog) {
   .el-dialog {
-    border-radius: 20px;
+    border-radius: 16px;
     box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
     backdrop-filter: blur(10px);
     background: rgba(255, 255, 255, 0.95);
+    margin: 0.5rem auto !important;
+    width: 90% !important;
+    max-width: 400px !important;
   }
 
   .el-dialog__header {
-    padding: 20px 20px 0;
+    padding: 16px 16px 0;
     text-align: center;
 
     .el-dialog__title {
-      font-size: 18px;
+      font-size: 16px;
       font-weight: 600;
       color: #374151;
+
+      @media (min-width: 768px) {
+        font-size: 18px;
+      }
     }
   }
 
   .el-dialog__body {
-    padding: 10px 20px 20px;
+    padding: 8px 16px 16px;
+
+    @media (min-width: 768px) {
+      padding: 10px 20px 20px;
+    }
   }
 }
 </style>

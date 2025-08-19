@@ -1,10 +1,13 @@
 <template>
   <div
-    class="flex h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-stone-50"
+    class="flex flex-col md:flex-row h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-stone-50"
   >
     <!-- 左侧用户列表 -->
     <div
-      class="w-1/3 bg-white/90 backdrop-blur-sm border-r border-gray-200/60 flex flex-col shadow-sm"
+      :class="[
+        'bg-white/90 backdrop-blur-sm border-r border-gray-200/60 flex flex-col shadow-sm',
+        showChatArea ? 'hidden md:flex md:w-1/3' : 'w-full md:w-1/3'
+      ]"
     >
       <!-- 头部 -->
       <div
@@ -52,7 +55,10 @@
         <div
           v-for="user in filteredUsers"
           :key="user.id"
-          @click="selectUser(user.id)"
+          @click="
+            selectUser(user.id);
+            showChatArea = true;
+          "
           :class="[
             'p-4 cursor-pointer border-b border-gray-100/50 hover:bg-gradient-to-r hover:from-slate-50 hover:to-gray-50 transition-all duration-300 transform hover:scale-[1.01]',
             selectedUser?.id === user.id
@@ -124,11 +130,26 @@
     </div>
 
     <!-- 右侧聊天区域 -->
-    <div class="flex-1 flex flex-col bg-white/70 backdrop-blur-sm">
+    <div
+      :class="[
+        'flex-1 flex flex-col bg-white/70 backdrop-blur-sm',
+        !showChatArea ? 'hidden md:flex' : 'w-full'
+      ]"
+    >
       <!-- 聊天头部 -->
       <div
-        class="p-6 bg-white/90 backdrop-blur-sm border-b border-gray-200/60 shadow-sm"
+        class="p-4 md:p-6 bg-white/90 backdrop-blur-sm border-b border-gray-200/60 shadow-sm flex items-center"
       >
+        <!-- 移动端返回按钮 -->
+        <el-button
+          v-if="showChatArea"
+          circle
+          size="small"
+          class="mr-3 md:hidden"
+          @click="showChatArea = false"
+        >
+          <el-icon><ArrowLeft /></el-icon>
+        </el-button>
         <div v-if="selectedUser" class="flex items-center justify-between">
           <div class="flex items-center space-x-4">
             <div class="relative">
@@ -165,7 +186,10 @@
             </div>
           </div>
           <!-- 聊天操作按钮 -->
-          <div class="flex items-center space-x-2">
+          <div
+            class="flex items-center space-x-2"
+            v-if="selectedUser.isOnline && !selectedUser.isSelf"
+          >
             <el-button
               circle
               size="small"
@@ -208,7 +232,7 @@
 
       <!-- 消息区域 -->
       <div
-        class="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar"
+        class="flex-1 overflow-y-auto p-3 md:p-6 space-y-3 md:space-y-4 custom-scrollbar"
         ref="messagesContainer"
       >
         <div
@@ -253,7 +277,7 @@
             <!-- 消息气泡 -->
             <div
               :class="[
-                'max-w-xs lg:max-w-md px-4 py-3 rounded-2xl shadow-sm transition-all duration-300 hover:shadow-md',
+                'max-w-[75vw] md:max-w-xs lg:max-w-md px-3 md:px-4 py-2 md:py-3 rounded-2xl shadow-sm transition-all duration-300 hover:shadow-md',
                 message.senderId === socketStore.userId
                   ? 'bg-gradient-to-r from-slate-500 to-slate-600 text-white rounded-br-md ml-auto'
                   : 'bg-white border border-slate-200 text-slate-900 rounded-bl-md'
@@ -284,8 +308,11 @@
       </div>
 
       <!-- 输入区域 -->
-      <div v-if="selectedUser" class="p-6 bg-white/90 backdrop-blur-sm">
-        <div class="flex items-end space-x-3">
+      <div
+        v-if="selectedUser"
+        class="p-3 md:p-6 bg-white/90 backdrop-blur-sm pb-16 md:pb-3"
+      >
+        <div class="flex items-end space-x-2 md:space-x-3">
           <!-- 附件按钮 -->
           <el-button circle class="message-action-btn" @click="fileClick">
             <el-icon><Plus /></el-icon>
@@ -309,7 +336,7 @@
           <el-button
             @click="fileClick"
             type="default"
-            class="file-button mr-2"
+            class="file-button mr-1 md:mr-2 h-10 w-10 md:h-auto md:w-auto"
             title="发送文件"
           >
             <el-icon><Document /></el-icon>
@@ -320,11 +347,11 @@
             @click="sendCurrentMessage"
             :disabled="!currentMessage.trim()"
             type="primary"
-            class="send-button"
+            class="send-button h-10 md:h-auto"
             :class="{ 'animate-pulse': currentMessage.trim() }"
           >
             <el-icon class="mr-1"><Promotion /></el-icon>
-            发送
+            <span class="hidden xs:inline">发送</span>
           </el-button>
 
           <!-- 隐藏的文件输入 -->
@@ -368,6 +395,37 @@
       :file-info="sendingFileInfo"
       :peer-connection="pc"
     />
+
+    <!-- 移动端底部导航 -->
+    <div
+      class="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 shadow-lg md:hidden z-10"
+      v-if="selectedUser"
+    >
+      <div class="flex justify-around items-center p-3">
+        <div
+          class="flex flex-col items-center cursor-pointer"
+          @click="showChatArea = false"
+          :class="{
+            'text-slate-900 font-medium': !showChatArea,
+            'text-slate-400': showChatArea
+          }"
+        >
+          <el-icon class="text-xl mb-1"><UserIcon /></el-icon>
+          <span class="text-xs">联系人</span>
+        </div>
+        <div
+          class="flex flex-col items-center cursor-pointer"
+          @click="showChatArea = true"
+          :class="{
+            'text-slate-900 font-medium': showChatArea,
+            'text-slate-400': !showChatArea
+          }"
+        >
+          <el-icon class="text-xl mb-1"><ChatDotRound /></el-icon>
+          <span class="text-xs">聊天</span>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -400,7 +458,8 @@ import {
   Plus,
   Connection,
   Promotion,
-  Document
+  Document,
+  ArrowLeft
 } from "@element-plus/icons-vue";
 import { formateTime, getUserAvatarColor } from "@/utils";
 import VideoDialog from "./components/videoDialog.vue";
@@ -412,9 +471,9 @@ import {
   createOffer,
   createPeerConnection,
   getLocalStream,
-  testIceServersStatus,
-  iceConfiguration
+  testIceServers
 } from "@/utils/rtc";
+import { sendFileInChunks, receiveFile, downloadFile } from "@/utils/file";
 import Progress from "./components/progress.vue";
 
 // 为File System Access API添加类型声明
@@ -443,6 +502,13 @@ const messagesContainer = ref<HTMLElement>();
 const socketStore = useSocketStore();
 const currentMessage = ref<string>("");
 const searchQuery = ref<string>("");
+// 移动端视图控制
+// 控制移动端视图的状态
+const showChatArea = ref<boolean>(false);
+// 是否为移动设备视图
+const isMobileView = ref<boolean>(
+  typeof window !== "undefined" ? window.innerWidth < 768 : false
+);
 // WebRTC 事件处理函数
 const handleAnswer = async (answer: AnswerPayload) => {
   console.log("收到 answer", answer);
@@ -564,8 +630,28 @@ const {
   handleCallControl
 });
 
+// 处理窗口大小变化
+const handleResize = () => {
+  if (typeof window !== "undefined") {
+    // 更新移动设备视图状态
+    isMobileView.value = window.innerWidth < 768;
+
+    // 如果是桌面端，始终显示两个面板
+    if (!isMobileView.value) {
+      showChatArea.value = false; // 在桌面端，这个值不会影响布局，但重置它可以确保一致性
+    }
+  }
+};
+
 onMounted(async () => {
   await initSocket();
+
+  // 添加窗口大小变化监听
+  if (typeof window !== "undefined") {
+    window.addEventListener("resize", handleResize);
+    // 初始化时执行一次以设置正确的初始状态
+    handleResize();
+  }
 });
 
 // 组件卸载时清理资源
@@ -580,11 +666,23 @@ onUnmounted(() => {
 
   // 关闭PeerConnection
   destoryPc();
+
+  // 移除窗口大小变化监听
+  if (typeof window !== "undefined") {
+    window.removeEventListener("resize", handleResize);
+  }
 });
 
 // 计算当前选中的用户
 const selectedUser = computed(() => {
   return users.value.find(user => user.id === selectedUserId.value);
+});
+
+// 监听选中用户变化，在移动端自动切换到聊天区域
+watch(selectedUser, newVal => {
+  if (newVal && window.innerWidth < 768) {
+    showChatArea.value = true;
+  }
 });
 
 // 过滤用户列表
@@ -869,192 +967,58 @@ const acceptFile = async () => {
   // 监听数据通道
   pc.ondatachannel = event => {
     const dataChannel = event.channel;
-    let receivedSize = 0;
-    let fileBuffer: ArrayBuffer[] = [];
-    let lastProgressUpdate = Date.now();
-    let fileWriter: FileSystemWriteStream | null = null;
-    let tempFileHandle: FileSystemFileHandle | null = null;
 
-    // 检查是否支持File System Access API
-    const supportsFileSystem = "showSaveFilePicker" in window;
+    // 使用工具函数接收文件
+    receiveFile(
+      dataChannel,
+      // 文件信息回调
+      fileInfo => {
+        receivedFileInfo.value = fileInfo;
+        console.log("接收文件信息:", receivedFileInfo.value);
+      },
+      // 进度回调
+      progress => {
+        fileProgress.value = progress;
+      },
+      // 完成回调
+      blob => {
+        receivedFile.value = blob;
 
-    dataChannel.onmessage = async event => {
-      const data = event.data;
-
-      // 如果是字符串，可能是文件信息或完成信号
-      if (typeof data === "string") {
-        try {
-          const message = JSON.parse(data);
-
-          if (message.type === "file-info") {
-            // 接收到文件信息
-            receivedFileInfo.value = message.data;
-            console.log("接收文件信息:", receivedFileInfo.value);
-
-            // 重置接收状态
-            fileBuffer = [];
-            receivedSize = 0;
-
-            // 对于大文件（超过50MB），尝试使用File System Access API
-            if (
-              supportsFileSystem &&
-              receivedFileInfo.value &&
-              receivedFileInfo.value.size > 50 * 1024 * 1024
-            ) {
-              try {
-                // 请求用户选择保存位置
-                tempFileHandle = await window.showSaveFilePicker({
-                  suggestedName: receivedFileInfo.value.name,
-                  types: [
-                    {
-                      description: "文件",
-                      accept: {
-                        [receivedFileInfo.value.type ||
-                        "application/octet-stream"]: [".file"]
-                      }
-                    }
-                  ]
-                });
-
-                // 创建可写流
-                const writable = await tempFileHandle.createWritable();
-                fileWriter = writable;
-                console.log("使用File System API接收大文件");
-              } catch (error) {
-                console.warn("无法使用File System API，回退到内存模式:", error);
-                fileWriter = null;
-                tempFileHandle = null;
-              }
-            }
-          } else if (message.type === "file-complete") {
-            // 文件接收完成处理
-            console.log("开始处理接收完成的文件...");
-
-            if (fileWriter) {
-              // 使用File System API的情况
-              try {
-                await fileWriter.close();
-                console.log("文件已保存到用户选择的位置");
-                ElMessage.success("文件已保存");
-
-                // 重置状态
-                setTimeout(() => {
-                  fileDialogVisible.value = false;
-                  fileProgress.value = 0;
-                  receivedFileInfo.value = null;
-                  receivedFile.value = null;
-                  fileWriter = null;
-                  tempFileHandle = null;
-
-                  // 关闭数据通道
-                  if (dataChannel) {
-                    dataChannel.close();
-                  }
-
-                  // 关闭并重置PeerConnection
-                  destoryPc();
-                }, 1000);
-              } catch (error) {
-                console.error("保存文件失败:", error);
-                ElMessage.error("保存文件失败，请重试");
-              }
-            } else {
-              // 使用内存模式的情况
-              setTimeout(() => {
-                try {
-                  console.log(`合并 ${fileBuffer.length} 个文件分片...`);
-                  const blob = new Blob(fileBuffer, {
-                    type:
-                      receivedFileInfo.value?.type || "application/octet-stream"
-                  });
-                  receivedFile.value = blob;
-
-                  // 创建下载链接
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download =
-                    receivedFileInfo.value?.name || "downloaded_file";
-                  a.click();
-                  URL.revokeObjectURL(url);
-
-                  // 重置状态
-                  setTimeout(() => {
-                    fileDialogVisible.value = false;
-                    fileProgress.value = 0;
-                    receivedFileInfo.value = null;
-                    receivedFile.value = null;
-                    fileWriter = null;
-                    tempFileHandle = null;
-
-                    // 关闭数据通道
-                    if (dataChannel) {
-                      dataChannel.close();
-                    }
-
-                    // 关闭并重置PeerConnection
-                    destoryPc();
-                  }, 1000);
-                } catch (error) {
-                  console.error("合并文件分片失败:", error);
-                  ElMessage.error("文件处理失败，请重试");
-                }
-              }, 100);
-            }
-          }
-        } catch (error) {
-          console.error("解析消息失败:", error);
-        }
-      } else if (data instanceof ArrayBuffer) {
-        // 接收文件数据分片
-        if (fileWriter) {
-          // 使用File System API直接写入文件
-          try {
-            await fileWriter.write(data);
-            receivedSize += data.byteLength;
-          } catch (error) {
-            console.error("写入文件失败:", error);
-            ElMessage.error("文件写入失败");
-          }
+        // 如果是内存模式，自动下载文件
+        if (receivedFile.value.size > 0) {
+          downloadFile(blob, receivedFileInfo.value?.name || "downloaded_file");
+          ElMessage.success("文件已下载");
         } else {
-          // 使用内存模式
-          fileBuffer.push(data);
-          receivedSize += data.byteLength;
+          ElMessage.success("文件已保存到用户选择的位置");
         }
 
-        // 更新进度 - 限制更新频率
-        if (receivedFileInfo.value) {
-          const now = Date.now();
-          const newProgress = Math.min(
-            100,
-            Math.floor((receivedSize / receivedFileInfo.value.size) * 100)
-          );
+        // 重置状态
+        setTimeout(() => {
+          fileDialogVisible.value = false;
+          fileProgress.value = 0;
+          receivedFileInfo.value = null;
+          receivedFile.value = null;
 
-          // 只有进度变化或距离上次更新超过500ms才更新UI
-          if (
-            newProgress !== fileProgress.value ||
-            now - lastProgressUpdate > 500
-          ) {
-            fileProgress.value = newProgress;
-            lastProgressUpdate = now;
-
-            // 减少日志输出频率，避免控制台阻塞
-            if (fileProgress.value % 5 === 0 || fileProgress.value === 100) {
-              console.log(`文件接收进度: ${fileProgress.value}%`);
-            }
+          // 关闭数据通道
+          if (dataChannel) {
+            dataChannel.close();
           }
-        }
+
+          // 关闭并重置PeerConnection
+          destoryPc();
+        }, 1000);
       }
-    };
+    );
 
     dataChannel.onopen = () => {
       console.log("数据通道已打开，准备接收文件");
     };
 
-    dataChannel.onerror = error => {
+    dataChannel.onerror = (error: any) => {
       console.error("数据通道错误:", error);
       ElMessage.error("文件传输错误");
     };
+
     dataChannel.onclose = () => {
       console.log("数据通道已关闭");
       callState.value = CallState.IDLE;
@@ -1185,150 +1149,40 @@ const sendFile = async () => {
   sendingFileDialogVisible.value = true;
   initPc();
   channel = createChannel(pc!, "file");
+
   if (channel) {
-    channel.onopen = () => {
+    channel.onopen = async () => {
       console.log("DataChannel 已建立，可以传输文件");
-      // 发送文件信息
-      if (channel && channel.readyState === "open") {
-        channel.send(
-          JSON.stringify({ type: "file-info", data: sendingFileInfo.value })
-        );
 
-        // 开始传输文件数据
-        const chunkSize = 64 * 1024; // 增加到64KB分片大小，提高传输效率
-        let offset = 0;
-        const fileReader = new FileReader();
-        // 添加缓冲区监控
-        const bufferThreshold = 1024 * 1024; // 1MB缓冲区阈值
-        let sendingPaused = false;
-        let pendingChunk: ArrayBuffer | null = null;
-        let lastProgressUpdate = Date.now();
+      // 使用工具函数发送文件
+      try {
+        await sendFileInChunks(file!, channel!, progress => {
+          sendingProgress.value = progress;
+        });
 
-        // 监控DataChannel缓冲区状态
-        if (channel) {
-          channel.bufferedAmountLowThreshold = bufferThreshold / 2; // 设置为阈值的一半，提前恢复传输
-
-          channel.onbufferedamountlow = () => {
-            if (sendingPaused && pendingChunk) {
-              console.log("缓冲区已降至阈值以下，继续发送");
-              sendingPaused = false;
-              // 发送暂停的分片
-              channel!.send(pendingChunk);
-              pendingChunk = null;
-              // 继续读取下一个分片
-              if (offset < file!.size) {
-                setTimeout(() => readSlice(offset), 10); // 添加小延迟避免立即填满缓冲区
-              }
-            }
-          };
-        }
-
-        fileReader.onload = e => {
-          if (e.target?.result && channel?.readyState === "open") {
-            if (typeof e.target.result === "string") {
-              console.error("文件读取结果类型错误");
-              return;
-            }
-
-            // 检查缓冲区状态
-            if (channel?.bufferedAmount > bufferThreshold) {
-              console.log("缓冲区已满，暂停发送");
-              sendingPaused = true;
-              pendingChunk = e.target.result;
-              return;
-            }
-
-            try {
-              channel.send(e.target.result);
-              offset += e.target.result.byteLength;
-
-              // 更新进度 - 限制更新频率，减少UI压力
-              if (file) {
-                const now = Date.now();
-                const newProgress = Math.min(
-                  100,
-                  Math.floor((offset / file.size) * 100)
-                );
-
-                // 只有进度变化超过1%或距离上次更新超过500ms才更新UI
-                if (
-                  newProgress !== sendingProgress.value ||
-                  now - lastProgressUpdate > 500
-                ) {
-                  sendingProgress.value = newProgress;
-                  lastProgressUpdate = now;
-
-                  // 减少日志输出频率
-                  if (newProgress % 5 === 0 || newProgress === 100) {
-                    console.log(`文件传输进度: ${newProgress}%`);
-                  }
-                }
-
-                // 继续读取下一个分片
-                if (offset < file.size) {
-                  // 根据缓冲区状态动态调整延迟
-                  const delay =
-                    channel?.bufferedAmount > bufferThreshold / 2 ? 50 : 5;
-                  setTimeout(() => {
-                    readSlice(offset);
-                  }, delay);
-                } else {
-                  console.log("文件传输完成");
-                  if (channel) {
-                    channel.send(JSON.stringify({ type: "file-complete" }));
-                  }
-
-                  // 传输完成后关闭对话框并清理资源
-                  setTimeout(() => {
-                    sendingFileDialogVisible.value = false;
-                    sendingProgress.value = 0;
-                    sendingFileInfo.value = null;
-                    file = null;
-                    callState.value = CallState.IDLE;
-                    // 关闭数据通道
-                    if (channel) {
-                      channel.close();
-                      channel = null;
-                    }
-                    // 关闭并重置PeerConnection
-                    destoryPc();
-                  }, 1000);
-                }
-              }
-            } catch (error) {
-              console.error("发送文件分片失败:", error);
-              // 尝试重新发送当前分片
-              setTimeout(() => {
-                if (channel?.readyState === "open") {
-                  console.log("尝试重新发送分片");
-                  readSlice(offset);
-                } else {
-                  ElMessage.error("文件传输连接已断开");
-                }
-              }, 1000);
-            }
-          }
-        };
-
-        fileReader.onerror = error => {
-          console.error("文件读取错误:", error);
-          ElMessage.error("文件读取错误");
+        // 传输完成后关闭对话框并清理资源
+        setTimeout(() => {
           sendingFileDialogVisible.value = false;
-        };
-
-        const readSlice = (o: number) => {
-          if (file) {
-            const slice = file.slice(o, o + chunkSize);
-            fileReader.readAsArrayBuffer(slice);
+          sendingProgress.value = 0;
+          sendingFileInfo.value = null;
+          file = null;
+          callState.value = CallState.IDLE;
+          // 关闭数据通道
+          if (channel) {
+            channel.close();
+            channel = null;
           }
-        };
-
-        // 开始读取第一个分片
-        readSlice(0);
+          // 关闭并重置PeerConnection
+          destoryPc();
+        }, 1000);
+      } catch (error) {
+        console.error("发送文件失败:", error);
+        ElMessage.error("文件传输失败");
+        sendingFileDialogVisible.value = false;
       }
     };
 
-    channel.onerror = error => {
+    channel.onerror = (error: any) => {
       console.error("数据通道错误:", error);
       ElMessage.error("文件传输错误");
       sendingFileDialogVisible.value = false;
@@ -1340,104 +1194,6 @@ const sendFile = async () => {
   // 2. 发送offer
   if (selectedUser.value) {
     sendOffer(offer, selectedUser.value.id, "file");
-  }
-};
-
-// 测试ICE服务器状态
-const testIceServers = async () => {
-  try {
-    ElMessage.info("正在测试ICE服务器状态...");
-    const status = await testIceServersStatus(iceConfiguration.iceServers);
-    console.log("STUN 可用:", status.stun);
-    console.log("TURN 可用:", status.turn);
-    console.log("候选地址列表:");
-    status.candidates.forEach(c => console.log(c.type, c.candidate));
-
-    // 构建表格HTML
-    const stunStatus = status.stun
-      ? "<span style='color: #67C23A'>✅ 可用</span>"
-      : "<span style='color: #F56C6C'>❌ 不可用</span>";
-    const turnStatus = status.turn
-      ? "<span style='color: #67C23A'>✅ 可用</span>"
-      : "<span style='color: #F56C6C'>❌ 不可用</span>";
-
-    // 统计候选地址类型
-    const candidateStats = status.candidates.reduce(
-      (acc, c) => {
-        acc[c.type] = (acc[c.type] || 0) + 1;
-        return acc;
-      },
-      {} as Record<string, number>
-    );
-
-    let candidateRows = "";
-    Object.entries(candidateStats).forEach(([type, count]) => {
-      const typeDesc =
-        {
-          host: "本地地址",
-          srflx: "STUN反射地址",
-          relay: "TURN中继地址",
-          prflx: "对等反射地址"
-        }[type] || type;
-      candidateRows += `
-        <tr>
-          <td style='padding: 8px; border: 1px solid #ddd;'>${typeDesc}</td>
-          <td style='padding: 8px; border: 1px solid #ddd; text-align: center;'>${count}</td>
-        </tr>
-      `;
-    });
-
-    const tableHTML = `
-      <div style='font-family: Arial, sans-serif;'>
-        <h3 style='margin-bottom: 15px; color: #303133;'>ICE服务器测试结果</h3>
-        <table style='width: 100%; border-collapse: collapse; margin-bottom: 15px;'>
-          <thead>
-            <tr style='background-color: #f5f7fa;'>
-              <th style='padding: 10px; border: 1px solid #ddd; text-align: left;'>服务类型</th>
-              <th style='padding: 10px; border: 1px solid #ddd; text-align: center;'>状态</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td style='padding: 10px; border: 1px solid #ddd;'>STUN服务器</td>
-              <td style='padding: 10px; border: 1px solid #ddd; text-align: center;'>${stunStatus}</td>
-            </tr>
-            <tr>
-              <td style='padding: 10px; border: 1px solid #ddd;'>TURN服务器</td>
-              <td style='padding: 10px; border: 1px solid #ddd; text-align: center;'>${turnStatus}</td>
-            </tr>
-          </tbody>
-        </table>
-        
-        <h4 style='margin: 15px 0 10px 0; color: #303133;'>候选地址统计</h4>
-        <table style='width: 100%; border-collapse: collapse;'>
-          <thead>
-            <tr style='background-color: #f5f7fa;'>
-              <th style='padding: 8px; border: 1px solid #ddd; text-align: left;'>地址类型</th>
-              <th style='padding: 8px; border: 1px solid #ddd; text-align: center;'>数量</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${candidateRows}
-          </tbody>
-        </table>
-        
-        <p style='margin-top: 15px; font-size: 12px; color: #909399;'>
-          总计: ${status.candidates.length} 个候选地址<br>
-          详细信息请查看浏览器控制台
-        </p>
-      </div>
-    `;
-
-    // 使用MessageBox显示表格
-    ElMessageBox.alert(tableHTML, "测试结果", {
-      dangerouslyUseHTMLString: true,
-      customClass: "ice-test-result-dialog",
-      confirmButtonText: "确定"
-    });
-  } catch (error) {
-    console.error("测试ICE服务器失败:", error);
-    ElMessage.error("测试ICE服务器失败，请查看控制台获取详细信息");
   }
 };
 </script>
@@ -1458,8 +1214,14 @@ const testIceServers = async () => {
 
 // 自定义滚动条
 .custom-scrollbar {
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: #64748b rgba(0, 0, 0, 0.05); /* Firefox */
+
   &::-webkit-scrollbar {
-    width: 6px;
+    width: 4px;
+    @media (min-width: 768px) {
+      width: 6px;
+    }
   }
 
   &::-webkit-scrollbar-track {
@@ -1500,6 +1262,13 @@ const testIceServers = async () => {
   border: 1px solid rgba(0, 0, 0, 0.1);
   backdrop-filter: blur(10px);
   transition: all 0.3s ease;
+  height: 36px;
+  width: 36px;
+
+  @media (min-width: 768px) {
+    height: auto;
+    width: auto;
+  }
 
   &:hover {
     background: rgba(100, 116, 139, 0.1);
@@ -1538,6 +1307,13 @@ const testIceServers = async () => {
   border: 2px solid rgba(0, 0, 0, 0.1);
   backdrop-filter: blur(10px);
   transition: all 0.3s ease;
+  height: 40px;
+  width: 40px;
+
+  @media (min-width: 768px) {
+    height: auto;
+    width: auto;
+  }
 
   &:hover {
     background: rgba(100, 116, 139, 0.1);

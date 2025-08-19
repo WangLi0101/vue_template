@@ -2,23 +2,27 @@
   <el-dialog
     v-model="dialogVisible"
     title="视频通话"
-    width="800px"
+    width="95%"
+    :max-width="800"
     :close-on-click-modal="false"
     :close-on-press-escape="false"
     :show-close="false"
+    class="video-dialog"
   >
     <div class="dialog-content">
-      <div class="video-container flex gap-4 mb-4">
-        <div class="local-video flex-1 relative">
+      <div
+        class="video-container flex flex-col md:flex-row gap-2 md:gap-4 mb-4"
+      >
+        <div class="local-video flex-1 relative mb-2 md:mb-0">
           <video
             ref="localVideo"
             autoplay
             muted
             playsinline
-            class="w-full h-64 object-cover rounded-lg bg-gray-900"
+            class="w-full h-40 md:h-64 object-cover rounded-lg bg-gray-900"
           />
           <div
-            class="absolute bottom-2 left-2 text-white text-sm bg-black/50 px-2 py-1 rounded"
+            class="absolute bottom-2 left-2 text-white text-xs md:text-sm bg-black/50 px-2 py-1 rounded"
           >
             本地视频
           </div>
@@ -28,7 +32,7 @@
             ref="remoteVideo"
             autoplay
             playsinline
-            class="w-full h-64 object-cover rounded-lg bg-gray-900"
+            class="w-full h-40 md:h-64 object-cover rounded-lg bg-gray-900"
           />
           <!-- 专门用于播放远程音频的音频元素 -->
           <audio ref="remoteAudio" autoplay style="display: none" />
@@ -42,15 +46,15 @@
               type="primary"
               size="large"
               @click="manualPlay"
-              class="play-button"
+              class="play-button text-xs md:text-sm"
             >
-              <el-icon class="mr-2"><VideoCamera /></el-icon>
-              点击播放视频和音频
+              <el-icon class="mr-1 md:mr-2"><VideoCamera /></el-icon>
+              播放视频
             </el-button>
           </div>
 
           <div
-            class="absolute bottom-2 left-2 text-white text-sm bg-black/50 px-2 py-1 rounded"
+            class="absolute bottom-2 left-2 text-white text-xs md:text-sm bg-black/50 px-2 py-1 rounded"
           >
             远程视频
           </div>
@@ -75,13 +79,14 @@
       </div>
 
       <!-- 通话控制按钮 -->
-      <div class="controls flex justify-center gap-4">
+      <div class="controls flex justify-center gap-2 md:gap-4">
         <el-button
           :type="isMuted ? 'danger' : 'primary'"
           circle
-          size="large"
+          size="default"
           @click="toggleMute"
           :title="isMuted ? '取消静音' : '静音'"
+          class="w-10 h-10 md:w-12 md:h-12"
         >
           <el-icon><Microphone /></el-icon>
         </el-button>
@@ -89,9 +94,10 @@
         <el-button
           :type="isVideoOff ? 'danger' : 'primary'"
           circle
-          size="large"
+          size="default"
           @click="toggleVideo"
           :title="isVideoOff ? '开启摄像头' : '关闭摄像头'"
+          class="w-10 h-10 md:w-12 md:h-12"
         >
           <el-icon><VideoCamera /></el-icon>
         </el-button>
@@ -99,9 +105,10 @@
         <el-button
           type="danger"
           circle
-          size="large"
+          size="default"
           @click="hangUp"
           title="挂断"
+          class="w-10 h-10 md:w-12 md:h-12"
         >
           <el-icon><Phone /></el-icon>
         </el-button>
@@ -323,12 +330,53 @@ defineExpose({
 </script>
 
 <style lang="scss" scoped>
+.video-dialog {
+  :deep(.el-dialog) {
+    margin: 0.5rem auto !important;
+    width: 95% !important;
+    max-width: 800px !important;
+    border-radius: 12px;
+    overflow: hidden;
+
+    .el-dialog__header {
+      padding: 12px 16px;
+
+      @media (min-width: 768px) {
+        padding: 16px 20px;
+      }
+
+      .el-dialog__title {
+        font-size: 16px;
+
+        @media (min-width: 768px) {
+          font-size: 18px;
+        }
+      }
+    }
+
+    .el-dialog__body {
+      padding: 12px;
+
+      @media (min-width: 768px) {
+        padding: 16px 20px;
+      }
+    }
+  }
+}
+
 .play-button {
   background: rgba(64, 158, 255, 0.9) !important;
   border: none !important;
   backdrop-filter: blur(10px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   transition: all 0.3s ease;
+  padding: 8px 12px;
+  font-size: 12px;
+
+  @media (min-width: 768px) {
+    padding: 12px 16px;
+    font-size: 14px;
+  }
 
   &:hover {
     background: rgba(64, 158, 255, 1) !important;

@@ -1,26 +1,32 @@
 <template>
-  <div class="connection-info mb-4 p-3 bg-gray-50 rounded-lg">
-    <div class="grid grid-cols-2 gap-4 text-sm">
-      <div>
+  <div class="connection-info mb-3 md:mb-4 p-2 md:p-3 bg-gray-50 rounded-lg">
+    <div
+      class="grid grid-cols-1 md:grid-cols-2 gap-2 md:gap-4 text-xs md:text-sm"
+    >
+      <div class="connection-item">
         <span class="font-semibold">连接类型:</span>
-        <span :class="getConnectionTypeClass()">{{
+        <span :class="getConnectionTypeClass()" class="break-all">{{
           connectionInfo.connectionType
         }}</span>
       </div>
-      <div>
-        <span class="font-semibold">本地候选:</span>
-        <span class="text-gray-600">{{ connectionInfo.localCandidate }}</span>
-      </div>
-      <div>
-        <span class="font-semibold">远程候选:</span>
-        <span class="text-gray-600">{{ connectionInfo.remoteCandidate }}</span>
-      </div>
-      <div>
+      <div class="connection-item">
         <span class="font-semibold">数据传输:</span>
         <span class="text-gray-600">
           ↓{{ formatBytes(connectionInfo.bytesReceived) }} ↑{{
             formatBytes(connectionInfo.bytesSent)
           }}
+        </span>
+      </div>
+      <div class="connection-item">
+        <span class="font-semibold">本地候选:</span>
+        <span class="text-gray-600 break-all">
+          {{ connectionInfo.localCandidate }}
+        </span>
+      </div>
+      <div class="connection-item">
+        <span class="font-semibold">远程候选:</span>
+        <span class="text-gray-600 break-all">
+          {{ connectionInfo.remoteCandidate }}
         </span>
       </div>
     </div>
@@ -193,3 +199,27 @@ onUnmounted(() => {
   stopStatsMonitoring();
 });
 </script>
+
+<style lang="scss" scoped>
+.connection-info {
+  font-size: 11px;
+
+  @media (min-width: 768px) {
+    font-size: 14px;
+  }
+}
+
+.connection-item {
+  display: flex;
+  flex-direction: column;
+
+  @media (min-width: 768px) {
+    flex-direction: row;
+    align-items: center;
+
+    .font-semibold {
+      margin-right: 4px;
+    }
+  }
+}
+</style>
