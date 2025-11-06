@@ -51,21 +51,50 @@ export interface CallControlPayload {
   senderId: string;
 }
 
-interface UseSocketOptions {
+export interface SignalHandlers {
   handleAnswer: (answer: AnswerPayload) => void;
   handleOffer: (offer: OfferPayload) => void;
   handleIceCandidate: (candidate: IceCandidatePayload) => void;
   handleCallControl: (control: CallControlPayload) => void;
 }
 
-export function useSocket({
-  handleAnswer,
-  handleOffer,
-  handleIceCandidate,
-  handleCallControl
-}: UseSocketOptions) {
+interface UseSocketOptions {
+  handlers?: Partial<SignalHandlers>;
+}
+
+export function useSocket({ handlers }: UseSocketOptions = {}) {
   const socketStore = useSocketStore();
   const { getSocket } = socketStore;
+
+  const signalHandlers: SignalHandlers = {
+    // 处理answer
+    handleAnswer: handlers?.handleAnswer ?? (() => {}),
+    // 处理offer
+    handleOffer: handlers?.handleOffer ?? (() => {}),
+    // 处理ICE candidate
+    handleIceCandidate: handlers?.handleIceCandidate ?? (() => {}),
+    // 处理通话控制
+    handleCallControl: handlers?.handleCallControl ?? (() => {})
+  };
+
+  /**
+   *
+   * 注册回调
+   */
+  const setSignalHandlers = (nextHandlers: Partial<SignalHandlers>) => {
+    if (nextHandlers.handleAnswer) {
+      signalHandlers.handleAnswer = nextHandlers.handleAnswer;
+    }
+    if (nextHandlers.handleOffer) {
+      signalHandlers.handleOffer = nextHandlers.handleOffer;
+    }
+    if (nextHandlers.handleIceCandidate) {
+      signalHandlers.handleIceCandidate = nextHandlers.handleIceCandidate;
+    }
+    if (nextHandlers.handleCallControl) {
+      signalHandlers.handleCallControl = nextHandlers.handleCallControl;
+    }
+  };
 
   // 本地状态管理
   const users = ref<User[]>([]);
@@ -212,16 +241,16 @@ export function useSocket({
           handleChat(payload as Message);
           break;
         case "offer":
-          handleOffer(payload as OfferPayload);
+          signalHandlers.handleOffer(payload as OfferPayload);
           break;
         case "answer":
-          handleAnswer(payload as AnswerPayload);
+          signalHandlers.handleAnswer(payload as AnswerPayload);
           break;
         case "ice-candidate":
-          handleIceCandidate(payload as IceCandidatePayload);
+          signalHandlers.handleIceCandidate(payload as IceCandidatePayload);
           break;
         case "call-control":
-          handleCallControl(payload as CallControlPayload);
+          signalHandlers.handleCallControl(payload as CallControlPayload);
           break;
       }
     });
@@ -280,6 +309,8 @@ export function useSocket({
     handleGetUsers,
     handleGetMessages,
     handleChat,
-    handleAnswer
+
+    // 注册回调
+    setSignalHandlers
   };
 }

@@ -2,116 +2,108 @@
   <el-dialog
     v-model="dialogVisible"
     title="视频通话"
-    width="95%"
-    :max-width="800"
+    width="92%"
+    :max-width="720"
     :close-on-click-modal="false"
     :close-on-press-escape="false"
     :show-close="false"
     class="video-dialog"
   >
     <div class="dialog-content">
-      <div
-        class="video-container flex flex-col md:flex-row gap-2 md:gap-4 mb-4"
-      >
-        <div class="local-video flex-1 relative mb-2 md:mb-0">
-          <video
-            ref="localVideo"
-            autoplay
-            muted
-            playsinline
-            class="w-full h-40 md:h-64 object-cover rounded-lg bg-gray-900"
-          />
-          <div
-            class="absolute bottom-2 left-2 text-white text-xs md:text-sm bg-black/50 px-2 py-1 rounded"
-          >
-            本地视频
+      <div class="call-header">
+        <div class="status-badge">实时通话进行中</div>
+        <p class="call-hint">保持网络稳定，获得更佳音视频体验</p>
+      </div>
+
+      <div class="video-layout">
+        <div class="remote-panel">
+          <div class="remote-feed-wrapper">
+            <video ref="remoteVideo" autoplay playsinline class="remote-feed" />
+            <audio ref="remoteAudio" autoplay style="display: none" />
+
+            <div v-if="showPlayButton" class="play-overlay">
+              <el-button
+                type="primary"
+                size="large"
+                @click="manualPlay"
+                class="play-button"
+              >
+                <el-icon class="mr-2"><VideoCamera /></el-icon>
+                点击播放远程视频
+              </el-button>
+            </div>
+
+            <div class="feed-label remote">远程画面</div>
           </div>
         </div>
-        <div class="remote-video flex-1 relative">
-          <video
-            ref="remoteVideo"
-            autoplay
-            playsinline
-            class="w-full h-40 md:h-64 object-cover rounded-lg bg-gray-900"
-          />
-          <!-- 专门用于播放远程音频的音频元素 -->
-          <audio ref="remoteAudio" autoplay style="display: none" />
 
-          <!-- 手动播放按钮（当自动播放失败时显示） -->
-          <div
-            v-if="showPlayButton"
-            class="absolute inset-0 flex items-center justify-center bg-black/50"
-          >
+        <div class="side-panel">
+          <div class="local-card">
+            <video
+              ref="localVideo"
+              autoplay
+              muted
+              playsinline
+              class="local-feed"
+            />
+            <div class="feed-label local">本地预览</div>
+          </div>
+
+          <ConnectionInfo
+            class="connection-card"
+            :peer-connection="props.peerConnection"
+            :visible="dialogVisible"
+          />
+
+          <div class="media-tip">
+            <el-alert
+              title="若无法自动播放，请点击“播放远程视频”按钮或检查浏览器权限"
+              type="info"
+              :closable="false"
+              show-icon
+            />
+          </div>
+
+          <div class="control-bar">
             <el-button
-              type="primary"
-              size="large"
-              @click="manualPlay"
-              class="play-button text-xs md:text-sm"
+              circle
+              size="default"
+              class="control-button"
+              :class="
+                isMuted ? 'control-button--danger' : 'control-button--primary'
+              "
+              @click="toggleMute"
+              :title="isMuted ? '取消静音' : '静音'"
             >
-              <el-icon class="mr-1 md:mr-2"><VideoCamera /></el-icon>
-              播放视频
+              <el-icon><Microphone /></el-icon>
+            </el-button>
+
+            <el-button
+              circle
+              size="default"
+              class="control-button"
+              :class="
+                isVideoOff
+                  ? 'control-button--warning'
+                  : 'control-button--primary'
+              "
+              @click="toggleVideo"
+              :title="isVideoOff ? '开启摄像头' : '关闭摄像头'"
+            >
+              <el-icon><VideoCamera /></el-icon>
+            </el-button>
+
+            <el-button
+              circle
+              size="default"
+              class="control-button control-button--danger"
+              @click="hangUp"
+              title="挂断"
+            >
+              <el-icon><Phone /></el-icon>
             </el-button>
           </div>
-
-          <div
-            class="absolute bottom-2 left-2 text-white text-xs md:text-sm bg-black/50 px-2 py-1 rounded"
-          >
-            远程视频
-          </div>
         </div>
-      </div>
-
-      <!-- 连接信息显示 -->
-      <ConnectionInfo
-        :peer-connection="props.peerConnection"
-        :visible="dialogVisible"
-      />
-
-      <!-- 媒体播放提示 -->
-      <div class="media-tip text-center mb-4">
-        <el-alert
-          title="如果无法自动播放视频或音频，请点击视频区域的播放按钮"
-          type="info"
-          :closable="false"
-          show-icon
-          class="text-sm"
-        />
-      </div>
-
-      <!-- 通话控制按钮 -->
-      <div class="controls flex justify-center gap-2 md:gap-4">
-        <el-button
-          :type="isMuted ? 'danger' : 'primary'"
-          circle
-          size="default"
-          @click="toggleMute"
-          :title="isMuted ? '取消静音' : '静音'"
-          class="w-10 h-10 md:w-12 md:h-12"
-        >
-          <el-icon><Microphone /></el-icon>
-        </el-button>
-
-        <el-button
-          :type="isVideoOff ? 'danger' : 'primary'"
-          circle
-          size="default"
-          @click="toggleVideo"
-          :title="isVideoOff ? '开启摄像头' : '关闭摄像头'"
-          class="w-10 h-10 md:w-12 md:h-12"
-        >
-          <el-icon><VideoCamera /></el-icon>
-        </el-button>
-
-        <el-button
-          type="danger"
-          circle
-          size="default"
-          @click="hangUp"
-          title="挂断"
-          class="w-10 h-10 md:w-12 md:h-12"
-        >
-          <el-icon><Phone /></el-icon>
-        </el-button>
       </div>
     </div>
   </el-dialog>
@@ -332,64 +324,297 @@ defineExpose({
 <style lang="scss" scoped>
 .video-dialog {
   :deep(.el-dialog) {
-    margin: 0.5rem auto !important;
-    width: 95% !important;
-    max-width: 800px !important;
-    border-radius: 12px;
+    margin: 0.75rem auto !important;
+    width: 92% !important;
+    max-width: 720px !important;
+    border-radius: 18px;
     overflow: hidden;
+    background: radial-gradient(
+      circle at top,
+      rgba(255, 255, 255, 0.98),
+      rgba(226, 232, 240, 0.94)
+    );
+    box-shadow: 0 30px 70px rgba(15, 23, 42, 0.22);
 
     .el-dialog__header {
-      padding: 12px 16px;
+      padding: 14px 18px 0;
 
       @media (min-width: 768px) {
-        padding: 16px 20px;
+        padding: 18px 24px 0;
       }
 
       .el-dialog__title {
-        font-size: 16px;
-
-        @media (min-width: 768px) {
-          font-size: 18px;
-        }
+        font-size: 18px;
+        font-weight: 600;
+        color: #0f172a;
       }
     }
 
     .el-dialog__body {
-      padding: 12px;
+      padding: 12px 16px 22px;
 
       @media (min-width: 768px) {
-        padding: 16px 20px;
+        padding: 18px 24px 28px;
       }
     }
   }
 }
 
-.play-button {
-  background: rgba(64, 158, 255, 0.9) !important;
-  border: none !important;
-  backdrop-filter: blur(10px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  transition: all 0.3s ease;
-  padding: 8px 12px;
-  font-size: 12px;
+.dialog-content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
 
-  @media (min-width: 768px) {
-    padding: 12px 16px;
-    font-size: 14px;
-  }
+.call-header {
+  text-align: center;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 16px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: linear-gradient(120deg, #6366f1, #8b5cf6, #3b82f6);
+  box-shadow: 0 12px 30px rgba(99, 102, 241, 0.35);
+}
+
+.call-hint {
+  margin-top: 10px;
+  font-size: 14px;
+  color: #475569;
+}
+
+.video-layout {
+  display: flex;
+  gap: clamp(14px, 3vw, 28px);
+  align-items: stretch;
+}
+
+.remote-panel {
+  flex: 1 1 60%;
+  display: flex;
+}
+
+.remote-feed-wrapper {
+  position: relative;
+  width: 100%;
+  border-radius: 18px;
+  overflow: hidden;
+  box-shadow: 0 25px 60px rgba(14, 23, 42, 0.45);
+  background: #0f172a;
+  min-height: clamp(220px, 48vw, 340px);
+}
+
+.remote-feed {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #0f172a;
+}
+
+.play-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(6px);
+}
+
+.play-button {
+  background: linear-gradient(130deg, #38bdf8, #2563eb) !important;
+  border: none !important;
+  padding: 12px 22px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  box-shadow: 0 16px 32px rgba(37, 99, 235, 0.45);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
 
   &:hover {
-    background: rgba(64, 158, 255, 1) !important;
     transform: translateY(-2px);
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 18px 36px rgba(37, 99, 235, 0.55);
   }
 }
 
-.remote-video {
-  position: relative;
+.side-panel {
+  flex: 1 1 40%;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(12px, 2.4vw, 20px);
+}
 
-  video {
-    background: #1a1a1a;
+.local-card {
+  position: relative;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(15, 23, 42, 0.92);
+}
+
+.local-feed {
+  width: 100%;
+  height: clamp(110px, 22vw, 180px);
+  object-fit: cover;
+}
+
+.feed-label {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #fff;
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(6px);
+}
+
+.feed-label.remote {
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.connection-card {
+  border-radius: 16px;
+  padding: 14px 18px;
+  background: rgba(248, 250, 252, 0.88);
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.2);
+
+  :deep(.connection-item span) {
+    font-size: 13px;
+  }
+}
+
+.media-tip :deep(.el-alert) {
+  border-radius: 16px;
+  background: rgba(59, 130, 246, 0.08);
+  border: none;
+  color: #1d4ed8;
+}
+
+.control-bar {
+  display: flex;
+  justify-content: center;
+  gap: clamp(16px, 4vw, 32px);
+  margin-top: 4px;
+}
+
+.control-button {
+  width: clamp(48px, 10vw, 60px);
+  height: clamp(48px, 10vw, 60px);
+  border: none;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+  box-shadow: 0 16px 30px rgba(15, 23, 42, 0.25);
+
+  .el-icon {
+    font-size: clamp(16px, 3.4vw, 20px);
+  }
+
+  &:hover {
+    transform: translateY(-3px);
+  }
+}
+
+.control-button--primary {
+  background: linear-gradient(135deg, #38bdf8, #2563eb);
+}
+
+.control-button--warning {
+  background: linear-gradient(135deg, #f97316, #fb923c);
+}
+
+.control-button--danger {
+  background: linear-gradient(135deg, #ef4444, #f87171);
+}
+
+@media (max-width: 640px) {
+  .dialog-content {
+    gap: 16px;
+  }
+
+  .status-badge {
+    font-size: 11px;
+    padding: 5px 12px;
+  }
+
+  .call-hint {
+    font-size: 13px;
+  }
+
+  .video-layout {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .remote-panel,
+  .side-panel {
+    flex: 1 1 auto;
+  }
+
+  .remote-feed-wrapper {
+    min-height: clamp(220px, 62vw, 320px);
+  }
+
+  .local-feed {
+    height: clamp(120px, 48vw, 200px);
+  }
+
+  .feed-label {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 480px) {
+  .video-dialog :deep(.el-dialog) {
+    width: 100% !important;
+    margin: 0.5rem auto !important;
+    border-radius: 0;
+  }
+
+  .dialog-content {
+    gap: 14px;
+  }
+
+  .remote-feed-wrapper {
+    border-radius: 0;
+    min-height: clamp(220px, 58vh, 300px);
+  }
+
+  .local-card {
+    width: 100%;
+  }
+
+  .local-feed {
+    height: clamp(100px, 38vw, 160px);
+  }
+
+  .control-bar {
+    gap: 18px;
+  }
+
+  .control-button {
+    width: 48px;
+    height: 48px;
   }
 }
 </style>
