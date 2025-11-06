@@ -1,11 +1,6 @@
 <template>
   <div
-    :class="[
-      'flex flex-col md:flex-row h-screen transition-colors duration-500',
-      isDarkMode
-        ? 'bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-100 theme-dark'
-        : 'bg-gradient-to-br from-slate-100 via-white to-slate-100 text-slate-800 theme-light'
-    ]"
+    class="flex flex-col md:flex-row h-screen transition-colors duration-500 bg-gradient-to-br from-slate-100 via-white to-slate-100 text-slate-800 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 dark:text-slate-100"
   >
     <ChatSidebar
       v-model:search-query="searchQuery"
@@ -20,10 +15,7 @@
 
     <div
       :class="[
-        'flex-1 flex flex-col',
-        isDarkMode
-          ? 'bg-slate-900/35 backdrop-blur-2xl border-l border-white/10'
-          : 'bg-white/80 backdrop-blur-xl border-l border-slate-200/70',
+        'flex-1 flex flex-col bg-white/80 dark:bg-slate-900/35 backdrop-blur-xl dark:backdrop-blur-2xl border-l border-slate-200/70 dark:border-white/10',
         !showChatArea ? 'hidden md:flex' : 'w-full'
       ]"
     >
@@ -97,7 +89,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import ChatSidebar from "./components/ChatSidebar.vue";
 import ChatHeader from "./components/ChatHeader.vue";
 import ChatMessages from "./components/ChatMessages.vue";
@@ -220,6 +212,23 @@ const handleSendFile = (file: File) => {
 
 onMounted(async () => {
   await initSocket();
+  const stored = localStorage.getItem("theme");
+  const prefersDark =
+    window.matchMedia &&
+    window.matchMedia("(prefers-color-scheme: dark)").matches;
+  if (stored === "dark") {
+    isDarkMode.value = true;
+  } else if (stored === "light") {
+    isDarkMode.value = false;
+  } else {
+    isDarkMode.value = prefersDark;
+  }
+  document.documentElement.classList.toggle("dark", isDarkMode.value);
+});
+
+watch(isDarkMode, val => {
+  document.documentElement.classList.toggle("dark", val);
+  localStorage.setItem("theme", val ? "dark" : "light");
 });
 </script>
 

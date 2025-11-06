@@ -2,8 +2,6 @@
   <el-dialog
     v-model="dialogVisible"
     title="视频通话"
-    width="92%"
-    :max-width="720"
     :close-on-click-modal="false"
     :close-on-press-escape="false"
     :show-close="false"
@@ -33,11 +31,21 @@
               </el-button>
             </div>
 
+            <div
+              v-if="!hasRemoteMedia && !showPlayButton"
+              class="remote-placeholder"
+            >
+              <div class="placeholder-art">
+                <el-icon class="placeholder-icon"><VideoCamera /></el-icon>
+                <p>等待远程媒体流…</p>
+              </div>
+            </div>
+
             <div class="feed-label remote">远程画面</div>
           </div>
         </div>
 
-        <div class="side-panel">
+        <div class="local-panel">
           <div class="local-card">
             <video
               ref="localVideo"
@@ -46,63 +54,66 @@
               playsinline
               class="local-feed"
             />
+            <div v-if="isLocalVideoDisabled" class="overlay-badge">
+              <el-icon class="overlay-icon"><VideoCamera /></el-icon>
+              <span>摄像头已关闭</span>
+            </div>
+            <div v-if="isMuted" class="status-pill muted">
+              <el-icon class="pill-icon"><Microphone /></el-icon>
+              <span>已静音</span>
+            </div>
             <div class="feed-label local">本地预览</div>
           </div>
+        </div>
+      </div>
+      <div class="info-section">
+        <ConnectionInfo
+          class="connection-card"
+          :peer-connection="props.peerConnection"
+          :visible="dialogVisible"
+        />
 
-          <ConnectionInfo
-            class="connection-card"
-            :peer-connection="props.peerConnection"
-            :visible="dialogVisible"
-          />
+        <div class="control-bar">
+          <el-button
+            circle
+            size="default"
+            class="control-button"
+            :class="
+              isMuted ? 'control-button--danger' : 'control-button--primary'
+            "
+            @click="toggleMute"
+            :title="isMuted ? '取消静音' : '静音'"
+            :aria-pressed="isMuted"
+            aria-label="切换静音"
+          >
+            <el-icon><Microphone /></el-icon>
+          </el-button>
 
-          <div class="media-tip">
-            <el-alert
-              title="若无法自动播放，请点击“播放远程视频”按钮或检查浏览器权限"
-              type="info"
-              :closable="false"
-              show-icon
-            />
-          </div>
+          <el-button
+            circle
+            size="default"
+            class="control-button"
+            :class="
+              isVideoOff ? 'control-button--warning' : 'control-button--primary'
+            "
+            @click="toggleVideo"
+            :title="isVideoOff ? '开启摄像头' : '关闭摄像头'"
+            :aria-pressed="isVideoOff"
+            aria-label="切换摄像头"
+          >
+            <el-icon><VideoCamera /></el-icon>
+          </el-button>
 
-          <div class="control-bar">
-            <el-button
-              circle
-              size="default"
-              class="control-button"
-              :class="
-                isMuted ? 'control-button--danger' : 'control-button--primary'
-              "
-              @click="toggleMute"
-              :title="isMuted ? '取消静音' : '静音'"
-            >
-              <el-icon><Microphone /></el-icon>
-            </el-button>
-
-            <el-button
-              circle
-              size="default"
-              class="control-button"
-              :class="
-                isVideoOff
-                  ? 'control-button--warning'
-                  : 'control-button--primary'
-              "
-              @click="toggleVideo"
-              :title="isVideoOff ? '开启摄像头' : '关闭摄像头'"
-            >
-              <el-icon><VideoCamera /></el-icon>
-            </el-button>
-
-            <el-button
-              circle
-              size="default"
-              class="control-button control-button--danger"
-              @click="hangUp"
-              title="挂断"
-            >
-              <el-icon><Phone /></el-icon>
-            </el-button>
-          </div>
+          <el-button
+            circle
+            size="default"
+            class="control-button control-button--danger"
+            @click="hangUp"
+            title="挂断"
+            aria-label="挂断通话"
+          >
+            <el-icon><Phone /></el-icon>
+          </el-button>
         </div>
       </div>
     </div>
@@ -145,7 +156,17 @@ const remoteAudioRef = useTemplateRef<HTMLAudioElement>("remoteAudio");
 const isMuted = ref(false);
 const isVideoOff = ref(false);
 const showPlayButton = ref(false);
+const hasRemoteMedia = ref(false);
 let localStream: MediaStream | null = null;
+
+// 根据真实轨道状态与按钮状态综合判断是否显示“摄像头关闭”角标
+const isLocalVideoDisabled = computed(() => {
+  if (isVideoOff.value) return true;
+  if (!localStream) return false;
+  const tracks = localStream.getVideoTracks();
+  if (tracks.length === 0) return true;
+  return !tracks.some(t => t.enabled && t.readyState === "live");
+});
 
 // 播放本地流
 const playLoacalStream = (stream: MediaStream) => {
@@ -183,6 +204,9 @@ const playRemoteStream = (stream: MediaStream) => {
     remoteVideoRef.value.muted = false;
     remoteAudioRef.value.muted = false;
 
+    // 初始根据轨道设置占位状态
+    hasRemoteMedia.value = stream.getTracks().length > 0;
+
     // 处理音频播放
     const playAudio = async () => {
       try {
@@ -219,7 +243,7 @@ const playRemoteStream = (stream: MediaStream) => {
         "x",
         remoteVideoRef.value?.videoHeight
       );
-
+      hasRemoteMedia.value = true;
       await playVideo();
     };
 
@@ -256,6 +280,7 @@ const playRemoteStream = (stream: MediaStream) => {
 
     remoteVideoRef.value.oncanplay = () => {
       console.log("远程视频可以播放");
+      hasRemoteMedia.value = true;
     };
   });
 };
@@ -308,11 +333,23 @@ const manualPlay = async () => {
 const hangUp = () => {
   emit("hangUp");
   dialogVisible.value = false;
+  showPlayButton.value = false;
+  hasRemoteMedia.value = false;
 };
 
 // 组件卸载时清理
 onUnmounted(() => {
   // 清理资源
+  try {
+    if (remoteVideoRef.value) remoteVideoRef.value.srcObject = null;
+    if (remoteAudioRef.value) remoteAudioRef.value.srcObject = null;
+    if (localVideoRef.value) localVideoRef.value.srcObject = null;
+  } catch (err) {
+    console.warn("清理媒体资源失败", err);
+  }
+  showPlayButton.value = false;
+  hasRemoteMedia.value = false;
+  localStream = null;
 });
 
 defineExpose({
@@ -325,8 +362,8 @@ defineExpose({
 .video-dialog {
   :deep(.el-dialog) {
     margin: 0.75rem auto !important;
-    width: 92% !important;
-    max-width: 720px !important;
+    width: 90% !important;
+    max-width: 820px !important;
     border-radius: 18px;
     overflow: hidden;
     background: radial-gradient(
@@ -391,9 +428,12 @@ defineExpose({
 }
 
 .video-layout {
-  display: flex;
+  display: grid;
+  --panel-max-h: clamp(280px, 52vh, 460px);
+  /* 两列等宽，确保同一 4:3 比例下高度一致 */
+  grid-template-columns: repeat(2, minmax(360px, 1fr));
   gap: clamp(14px, 3vw, 28px);
-  align-items: stretch;
+  align-items: start;
 }
 
 .remote-panel {
@@ -408,14 +448,44 @@ defineExpose({
   overflow: hidden;
   box-shadow: 0 25px 60px rgba(14, 23, 42, 0.45);
   background: #0f172a;
-  min-height: clamp(220px, 48vw, 340px);
+  aspect-ratio: 4 / 3;
+  min-height: 260px;
+  max-height: var(--panel-max-h);
 }
 
 .remote-feed {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   background: #0f172a;
+}
+
+.remote-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(
+    160deg,
+    rgba(15, 23, 42, 0.6),
+    rgba(15, 23, 42, 0.3)
+  );
+  backdrop-filter: blur(4px);
+}
+
+.placeholder-art {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: #cbd5e1;
+  font-size: 14px;
+}
+
+.placeholder-icon {
+  font-size: 28px;
+  color: #60a5fa;
 }
 
 .play-overlay {
@@ -452,6 +522,21 @@ defineExpose({
   display: flex;
   flex-direction: column;
   gap: clamp(12px, 2.4vw, 20px);
+  max-height: var(--panel-max-h);
+  overflow: hidden;
+}
+
+.local-panel {
+  flex: 1 1 40%;
+  display: flex;
+}
+
+.side-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(12px, 2.4vw, 20px);
+  max-height: 100%;
+  overflow: auto;
 }
 
 .local-card {
@@ -461,12 +546,17 @@ defineExpose({
   box-shadow: 0 20px 40px rgba(15, 23, 42, 0.28);
   border: 1px solid rgba(255, 255, 255, 0.18);
   background: rgba(15, 23, 42, 0.92);
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  min-height: 260px;
+  max-height: var(--panel-max-h);
 }
 
 .local-feed {
   width: 100%;
-  height: clamp(110px, 22vw, 180px);
-  object-fit: cover;
+  height: 100%;
+  object-fit: contain;
+  transform: scaleX(-1);
 }
 
 .feed-label {
@@ -485,6 +575,53 @@ defineExpose({
 
 .feed-label.remote {
   background: rgba(15, 23, 42, 0.72);
+}
+
+.overlay-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(2, 6, 23, 0.6);
+  box-shadow: 0 8px 16px rgba(15, 23, 42, 0.25);
+  pointer-events: none; /* 角标不拦截点击 */
+}
+
+.overlay-icon {
+  font-size: 16px;
+  color: #fb923c;
+}
+
+.status-pill {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #0f172a;
+  background: rgba(248, 250, 252, 0.92);
+  box-shadow: 0 8px 16px rgba(15, 23, 42, 0.25);
+}
+
+.status-pill.muted {
+  color: #1f2937;
+  background: rgba(253, 230, 138, 0.9);
+}
+
+.pill-icon {
+  font-size: 16px;
 }
 
 .connection-card {
@@ -510,6 +647,13 @@ defineExpose({
   justify-content: center;
   gap: clamp(16px, 4vw, 32px);
   margin-top: 4px;
+}
+
+.info-section {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(12px, 2.4vw, 20px);
+  margin-top: 6px;
 }
 
 .control-button {
@@ -562,25 +706,50 @@ defineExpose({
   }
 
   .video-layout {
-    flex-direction: column;
+    grid-template-columns: 1fr;
     gap: 16px;
+    --panel-max-h: clamp(240px, 56vh, 420px);
   }
 
   .remote-panel,
-  .side-panel {
+  .local-panel {
     flex: 1 1 auto;
   }
 
   .remote-feed-wrapper {
-    min-height: clamp(220px, 62vw, 320px);
+    min-height: 220px;
+    max-height: var(--panel-max-h);
+  }
+
+  .local-card {
+    min-height: 220px;
+    max-height: var(--panel-max-h);
+    border-radius: 14px;
   }
 
   .local-feed {
-    height: clamp(120px, 48vw, 200px);
+    height: 100%;
   }
 
   .feed-label {
     font-size: 11px;
+  }
+
+  .info-section {
+    gap: 12px;
+  }
+
+  .control-bar {
+    gap: 18px;
+  }
+
+  .control-button {
+    width: 44px;
+    height: 44px;
+
+    .el-icon {
+      font-size: 16px;
+    }
   }
 }
 
@@ -605,7 +774,7 @@ defineExpose({
   }
 
   .local-feed {
-    height: clamp(100px, 38vw, 160px);
+    height: 100%;
   }
 
   .control-bar {
@@ -613,8 +782,8 @@ defineExpose({
   }
 
   .control-button {
-    width: 48px;
-    height: 48px;
+    width: 44px;
+    height: 44px;
   }
 }
 </style>

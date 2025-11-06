@@ -160,13 +160,10 @@ const statusText = computed(() => {
   background-color: #f5f7fa;
   border-radius: 8px;
   padding: 10px;
-
+  font-size: 12px;
   @media (min-width: 768px) {
     padding: 12px;
   }
-
-  font-size: 12px;
-
   @media (min-width: 768px) {
     font-size: 14px;
   }
