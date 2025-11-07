@@ -94,6 +94,7 @@ export function useRtcCommunication({
   let sendingAbortController: AbortController | null = null;
   let shouldCloseChannelAfterCancel = false;
   let pendingCancelReason: string | null = null;
+  let hasCompletedFileSending = false;
   const pendingIceCandidates: RTCIceCandidateInit[] = [];
 
   const peerConnection = pc;
@@ -159,6 +160,7 @@ export function useRtcCommunication({
     pendingCancelReason = null;
     sendingAbortController = null;
     shouldCloseChannelAfterCancel = false;
+    hasCompletedFileSending = false;
 
     destoryPc();
     callState.value = CallState.IDLE;
@@ -580,6 +582,7 @@ export function useRtcCommunication({
 
     pendingCancelReason = null;
     shouldCloseChannelAfterCancel = false;
+    hasCompletedFileSending = false;
 
     sendingFileInfo.value = {
       name: file.name,
@@ -661,6 +664,8 @@ export function useRtcCommunication({
           { signal: sendingAbortController?.signal }
         );
 
+        hasCompletedFileSending = true;
+
         setTimeout(() => {
           cleanupFileSending({ closeChannel: true });
         }, 1000);
@@ -683,7 +688,7 @@ export function useRtcCommunication({
         return;
       }
 
-      if (sendingProgress.value < 100) {
+      if (!hasCompletedFileSending && sendingProgress.value < 100) {
         ElMessage.warning("文件传输已中断");
       }
 
@@ -693,6 +698,10 @@ export function useRtcCommunication({
     // 数据通道错误
     channel.onerror = event => {
       console.error("数据通道错误:", event);
+      if (hasCompletedFileSending) {
+        cleanupFileSending({ hideDialog: false, closeChannel: true });
+        return;
+      }
       notifySendingError("文件传输错误");
       cleanupFileSending({ hideDialog: false, closeChannel: true });
     };
