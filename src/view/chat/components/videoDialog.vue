@@ -10,10 +10,12 @@
     <div class="dialog-content">
       <div class="call-header">
         <div class="status-badge">实时通话进行中</div>
-        <p class="call-hint">保持网络稳定，获得更佳音视频体验</p>
+        <p v-if="showCallHint" class="call-hint">
+          保持网络稳定，获得更佳音视频体验
+        </p>
       </div>
 
-      <div class="video-layout">
+      <div class="video-layout" :class="videoLayoutClasses">
         <div class="remote-panel">
           <div class="remote-feed-wrapper">
             <video ref="remoteVideo" autoplay playsinline class="remote-feed" />
@@ -45,8 +47,8 @@
           </div>
         </div>
 
-        <div class="local-panel">
-          <div class="local-card">
+        <div class="local-panel" :class="localPanelClasses">
+          <div class="local-card" :class="localCardClasses">
             <video
               ref="localVideo"
               autoplay
@@ -66,14 +68,15 @@
           </div>
         </div>
       </div>
-      <div class="info-section">
+      <div class="info-section" :class="infoSectionClasses">
         <ConnectionInfo
+          v-if="showConnectionInfo"
           class="connection-card"
           :peer-connection="props.peerConnection"
           :visible="dialogVisible"
         />
 
-        <div class="control-bar">
+        <div class="control-bar" :class="controlBarClasses">
           <el-button
             circle
             size="default"
@@ -121,7 +124,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, useTemplateRef, onUnmounted } from "vue";
+import {
+  computed,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  ref,
+  useTemplateRef
+} from "vue";
 import { Microphone, VideoCamera, Phone } from "@element-plus/icons-vue";
 import ConnectionInfo from "./ConnectionInfo.vue";
 
@@ -157,7 +167,70 @@ const isMuted = ref(false);
 const isVideoOff = ref(false);
 const showPlayButton = ref(false);
 const hasRemoteMedia = ref(false);
+const initialWidth = typeof window !== "undefined" ? window.innerWidth : 1024;
+const initialHeight = typeof window !== "undefined" ? window.innerHeight : 768;
+const isMobileLayout = ref(initialWidth <= 640);
+const isTabletLayout = ref(initialWidth > 640 && initialWidth <= 1024);
+const isLandscape = ref(initialWidth >= initialHeight);
+const isCompactHeight = ref(initialHeight <= 720);
 let localStream: MediaStream | null = null;
+
+const updateLayout = () => {
+  if (typeof window === "undefined") return;
+  const { innerWidth: width, innerHeight: height } = window;
+  isMobileLayout.value = width <= 640;
+  isTabletLayout.value = width > 640 && width <= 1024;
+  isLandscape.value = width >= height;
+  isCompactHeight.value = height <= 720;
+};
+
+onMounted(() => {
+  updateLayout();
+  if (typeof window !== "undefined") {
+    window.addEventListener("resize", updateLayout);
+  }
+});
+
+const showCallHint = computed(() => !isMobileLayout.value);
+const showConnectionInfo = computed(
+  () => !isMobileLayout.value && !isCompactHeight.value
+);
+
+const videoLayoutClasses = computed(() => ({
+  "video-layout--tablet": isTabletLayout.value,
+  "video-layout--mobile": isMobileLayout.value,
+  "video-layout--landscape": isLandscape.value && !isMobileLayout.value,
+  "video-layout--compact": isCompactHeight.value,
+  "video-layout--compact-mobile": isCompactHeight.value && isMobileLayout.value
+}));
+
+const infoSectionClasses = computed(() => ({
+  "info-section--stacked":
+    isTabletLayout.value ||
+    isMobileLayout.value ||
+    (isCompactHeight.value && isLandscape.value),
+  "info-section--mobile": isMobileLayout.value,
+  "info-section--minimal": !showConnectionInfo.value
+}));
+
+const controlBarClasses = computed(() => ({
+  "control-bar--tablet": isTabletLayout.value && !isMobileLayout.value,
+  "control-bar--mobile": isMobileLayout.value,
+  "control-bar--stacked": isCompactHeight.value
+}));
+
+const localPanelClasses = computed(() => ({
+  "local-panel--floating": isMobileLayout.value && !isLandscape.value,
+  "local-panel--tablet":
+    isTabletLayout.value && !isMobileLayout.value && !isLandscape.value,
+  "local-panel--inline": isLandscape.value,
+  "local-panel--compact": isCompactHeight.value && !isMobileLayout.value
+}));
+
+const localCardClasses = computed(() => ({
+  "local-card--compact": isMobileLayout.value,
+  "local-card--landscape": isLandscape.value && !isMobileLayout.value
+}));
 
 // 根据真实轨道状态与按钮状态综合判断是否显示“摄像头关闭”角标
 const isLocalVideoDisabled = computed(() => {
@@ -339,6 +412,9 @@ const hangUp = () => {
 
 // 组件卸载时清理
 onUnmounted(() => {
+  if (typeof window !== "undefined") {
+    window.removeEventListener("resize", updateLayout);
+  }
   // 清理资源
   try {
     if (remoteVideoRef.value) remoteVideoRef.value.srcObject = null;
@@ -389,9 +465,17 @@ defineExpose({
 
     .el-dialog__body {
       padding: 12px 16px 22px;
+      display: flex;
+      flex-direction: column;
+      max-height: calc(100vh - 120px);
+      overflow: hidden;
 
       @media (min-width: 768px) {
         padding: 18px 24px 28px;
+      }
+
+      @media (max-height: 720px) {
+        max-height: calc(100vh - 92px);
       }
     }
   }
@@ -401,6 +485,19 @@ defineExpose({
   display: flex;
   flex-direction: column;
   gap: 20px;
+  flex: 1 1 auto;
+  max-height: 100%;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.dialog-content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.dialog-content::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.4);
+  border-radius: 999px;
 }
 
 .call-header {
@@ -430,15 +527,138 @@ defineExpose({
 .video-layout {
   display: grid;
   --panel-max-h: clamp(280px, 52vh, 460px);
-  /* 两列等宽，确保同一 4:3 比例下高度一致 */
-  grid-template-columns: repeat(2, minmax(360px, 1fr));
+  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 0.85fr);
   gap: clamp(14px, 3vw, 28px);
-  align-items: start;
+  align-items: stretch;
+}
+
+.video-layout--tablet {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+}
+
+.video-layout--mobile {
+  display: flex;
+  flex-direction: column;
+  gap: clamp(12px, 4vw, 20px);
+  position: relative;
+}
+
+.video-layout--landscape {
+  grid-template-columns: minmax(0, 1.25fr) minmax(220px, 0.85fr);
+  gap: clamp(12px, 2.6vw, 26px);
+  align-items: stretch;
+}
+
+.video-layout--compact {
+  --panel-max-h: clamp(240px, 48vh, 400px);
+}
+
+.video-layout--compact .remote-feed-wrapper {
+  min-height: clamp(220px, 42vh, 360px);
+}
+
+.video-layout--compact .local-card {
+  min-height: clamp(180px, 34vh, 280px);
+}
+
+.video-layout--compact-mobile {
+  --panel-max-h: clamp(210px, 56vh, 340px);
+}
+
+.video-layout--mobile .remote-panel {
+  position: relative;
+}
+
+.local-panel {
+  flex: 1 1 40%;
+  display: flex;
+}
+
+.local-panel--tablet {
+  width: 100%;
+  justify-content: center;
+}
+
+.local-panel--tablet .local-card {
+  max-width: min(480px, 100%);
+}
+
+.local-panel--inline {
+  position: relative;
+  width: min(320px, 36vw);
+  max-width: 100%;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+.local-panel--inline .local-card {
+  pointer-events: auto;
+}
+
+.local-panel--floating {
+  position: absolute;
+  bottom: clamp(12px, 5vw, 24px);
+  right: clamp(12px, 5vw, 24px);
+  width: clamp(120px, 34vw, 200px);
+  max-width: 45%;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.local-panel--compact {
+  margin-top: clamp(6px, 1.6vh, 16px);
+}
+
+.local-panel--floating .feed-label.local {
+  bottom: 6px;
+  left: 6px;
+  font-size: 11px;
+}
+
+.local-panel--floating .overlay-badge,
+.local-panel--floating .status-pill {
+  top: 8px;
+  padding: 4px 8px;
+}
+
+.local-panel--floating .status-pill {
+  right: 8px;
+}
+
+.local-card {
+  position: relative;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(15, 23, 42, 0.92);
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  min-height: 260px;
+  max-height: var(--panel-max-h);
+}
+
+.local-card--compact {
+  aspect-ratio: 3 / 4;
+  min-height: auto;
+  border-radius: 12px;
+  box-shadow: 0 16px 32px rgba(15, 23, 42, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+.local-card--landscape {
+  aspect-ratio: 16 / 9;
+  min-height: clamp(180px, 38vh, 280px);
 }
 
 .remote-panel {
   flex: 1 1 60%;
   display: flex;
+}
+
+.video-layout--landscape .remote-panel {
+  justify-content: center;
 }
 
 .remote-feed-wrapper {
@@ -451,6 +671,11 @@ defineExpose({
   aspect-ratio: 4 / 3;
   min-height: 260px;
   max-height: var(--panel-max-h);
+}
+
+.video-layout--landscape .remote-feed-wrapper {
+  aspect-ratio: 16 / 9;
+  max-height: clamp(240px, 60vh, 520px);
 }
 
 .remote-feed {
@@ -526,30 +751,12 @@ defineExpose({
   overflow: hidden;
 }
 
-.local-panel {
-  flex: 1 1 40%;
-  display: flex;
-}
-
 .side-scroll {
   display: flex;
   flex-direction: column;
   gap: clamp(12px, 2.4vw, 20px);
   max-height: 100%;
   overflow: auto;
-}
-
-.local-card {
-  position: relative;
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.28);
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(15, 23, 42, 0.92);
-  width: 100%;
-  aspect-ratio: 4 / 3;
-  min-height: 260px;
-  max-height: var(--panel-max-h);
 }
 
 .local-feed {
@@ -649,11 +856,47 @@ defineExpose({
   margin-top: 4px;
 }
 
+.control-bar--tablet {
+  justify-content: space-evenly;
+}
+
+.control-bar--mobile {
+  gap: clamp(14px, 6vw, 24px);
+  flex-wrap: wrap;
+}
+
+.control-bar--stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: clamp(12px, 3vh, 18px);
+}
+
+.control-bar--stacked .control-button {
+  width: clamp(48px, 9vw, 64px);
+  height: clamp(48px, 9vw, 64px);
+}
+
 .info-section {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.7fr);
+  gap: clamp(12px, 2.4vw, 20px);
+  align-items: stretch;
+  margin-top: 6px;
+}
+
+.info-section--stacked {
   display: flex;
   flex-direction: column;
-  gap: clamp(12px, 2.4vw, 20px);
-  margin-top: 6px;
+}
+
+.info-section--mobile {
+  gap: clamp(12px, 5vw, 22px);
+}
+
+.info-section--minimal {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  gap: clamp(12px, 3.2vw, 18px);
 }
 
 .control-button {
@@ -691,7 +934,46 @@ defineExpose({
   background: linear-gradient(135deg, #ef4444, #f87171);
 }
 
+@media (max-height: 720px) {
+  .dialog-content {
+    gap: 16px;
+  }
+
+  .video-layout {
+    --panel-max-h: clamp(220px, 46vh, 360px);
+  }
+
+  .info-section {
+    margin-top: 2px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .video-layout {
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+  }
+
+  .local-panel {
+    justify-content: center;
+  }
+
+  .info-section {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .control-bar {
+    justify-content: space-evenly;
+  }
+}
+
 @media (max-width: 640px) {
+  .video-dialog :deep(.el-dialog) {
+    width: min(96vw, 620px) !important;
+    margin: 0.5rem auto !important;
+  }
+
   .dialog-content {
     gap: 16px;
   }
@@ -706,41 +988,68 @@ defineExpose({
   }
 
   .video-layout {
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: column;
     gap: 16px;
-    --panel-max-h: clamp(240px, 56vh, 420px);
+    position: relative;
+    --panel-max-h: clamp(230px, 54vh, 380px);
   }
 
-  .remote-panel,
-  .local-panel {
-    flex: 1 1 auto;
+  .video-layout .remote-panel {
+    position: relative;
   }
 
-  .remote-feed-wrapper {
+  .video-layout .remote-feed-wrapper {
     min-height: 220px;
     max-height: var(--panel-max-h);
   }
 
-  .local-card {
-    min-height: 220px;
-    max-height: var(--panel-max-h);
-    border-radius: 14px;
+  .video-layout .local-panel.local-panel--floating {
+    position: absolute;
+    bottom: clamp(12px, 5vw, 24px);
+    right: clamp(12px, 5vw, 24px);
+    width: clamp(120px, 36vw, 200px);
+    max-width: 45%;
+    pointer-events: none;
+    z-index: 2;
   }
 
-  .local-feed {
+  .video-layout .local-card.local-card--compact {
+    min-height: auto;
+    aspect-ratio: 3 / 4;
+    border-radius: 12px;
+    box-shadow: 0 16px 32px rgba(15, 23, 42, 0.35);
+  }
+
+  .video-layout .local-feed {
     height: 100%;
   }
 
-  .feed-label {
+  .video-layout .local-panel.local-panel--floating .feed-label {
+    bottom: 6px;
+    left: 6px;
     font-size: 11px;
   }
 
+  .video-layout .local-panel.local-panel--floating .overlay-badge,
+  .video-layout .local-panel.local-panel--floating .status-pill {
+    top: 8px;
+    padding: 4px 8px;
+  }
+
+  .video-layout .local-panel.local-panel--floating .status-pill {
+    right: 8px;
+  }
+
   .info-section {
+    display: flex;
+    flex-direction: column;
     gap: 12px;
   }
 
   .control-bar {
     gap: 18px;
+    flex-wrap: wrap;
   }
 
   .control-button {
@@ -751,12 +1060,16 @@ defineExpose({
       font-size: 16px;
     }
   }
+
+  .video-layout.video-layout--compact-mobile {
+    --panel-max-h: clamp(200px, 52vh, 320px);
+  }
 }
 
 @media (max-width: 480px) {
   .video-dialog :deep(.el-dialog) {
-    width: 100% !important;
-    margin: 0.5rem auto !important;
+    width: calc(100vw - 12px) !important;
+    margin: 0.25rem auto !important;
     border-radius: 0;
   }
 

@@ -1,6 +1,6 @@
 <template>
   <div
-    class="flex flex-col md:flex-row h-screen transition-colors duration-500 bg-gradient-to-br from-slate-100 via-white to-slate-100 text-slate-800 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 dark:text-slate-100"
+    class="chat-layout flex flex-col md:flex-row min-h-screen md:h-screen transition-colors duration-500 bg-gradient-to-br from-slate-100 via-white to-slate-100 text-slate-800 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 dark:text-slate-100"
   >
     <ChatSidebar
       v-model:search-query="searchQuery"
@@ -11,11 +11,12 @@
       :socket-user-id="socketStore.userId"
       :is-dark-mode="isDarkMode"
       @select="handleSelectUser"
+      @toggle-theme="toggleTheme"
     />
 
     <div
       :class="[
-        'flex-1 flex flex-col bg-white/80 dark:bg-slate-900/35 backdrop-blur-xl dark:backdrop-blur-2xl border-l border-slate-200/70 dark:border-white/10',
+        'flex-1 flex flex-col bg-white/80 dark:bg-slate-900/35 backdrop-blur-xl dark:backdrop-blur-2xl border-t border-slate-200/70 dark:border-white/10 md:border-t-0 md:border-l',
         !showChatArea ? 'hidden md:flex' : 'w-full'
       ]"
     >
@@ -23,7 +24,6 @@
         :selected-user="selectedUser"
         :show-chat-area="showChatArea"
         :is-dark-mode="isDarkMode"
-        @toggle-theme="toggleTheme"
         @back="setShowChatArea(false)"
         @call="callVideo"
         @test-ice="testIceServers"
@@ -78,13 +78,6 @@
       :file-info="sendingFileInfo"
       :peer-connection="peerConnection"
     />
-
-    <MobileNav
-      :visible="Boolean(selectedUser)"
-      :show-chat-area="showChatArea"
-      @back-to-list="setShowChatArea(false)"
-      @go-chat="setShowChatArea(true)"
-    />
   </div>
 </template>
 
@@ -94,7 +87,6 @@ import ChatSidebar from "./components/ChatSidebar.vue";
 import ChatHeader from "./components/ChatHeader.vue";
 import ChatMessages from "./components/ChatMessages.vue";
 import ChatComposer from "./components/ChatComposer.vue";
-import MobileNav from "./components/MobileNav.vue";
 import VideoDialog from "./components/videoDialog.vue";
 import IncomingCallDialog from "./components/IncomingCallDialog.vue";
 import Progress from "./components/progress.vue";
@@ -233,7 +225,18 @@ watch(isDarkMode, val => {
 </script>
 
 <style lang="scss" scoped>
-:deep(.ice-test-result-dialog) {
+.chat-layout {
+  padding-top: env(safe-area-inset-top, 0);
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+@media (min-width: 768px) {
+  .chat-layout {
+    padding-bottom: 0;
+  }
+}
+
+::deep(.ice-test-result-dialog) {
   .el-message-box {
     width: 600px;
     max-width: 90vw;

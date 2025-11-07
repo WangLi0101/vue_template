@@ -131,6 +131,7 @@ const setContainer = (el: Element | ComponentPublicInstance | null) => {
   flex: 1;
   overflow-y: auto;
   padding: clamp(16px, 4vw, 32px);
+  padding-bottom: clamp(28px, 6vw, 56px);
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -378,6 +379,40 @@ const setContainer = (el: Element | ComponentPublicInstance | null) => {
 .message-list-leave-to {
   opacity: 0;
   transform: translateY(10px);
+}
+
+@media (max-width: 767px) {
+  .conversation-surface {
+    padding: 16px 16px calc(112px + env(safe-area-inset-bottom, 0));
+    gap: 12px;
+  }
+
+  .bubble {
+    max-width: min(85vw, 420px);
+    padding: 12px 16px;
+  }
+
+  .bubble-text {
+    font-size: 0.92rem;
+    line-height: 1.55;
+  }
+
+  .bubble-meta {
+    margin-top: 8px;
+    font-size: 0.68rem;
+  }
+
+  .peer-avatar {
+    width: 2.4rem;
+    height: 2.4rem;
+    font-size: 0.85rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .bubble {
+    max-width: calc(100vw - 96px);
+  }
 }
 
 .conversation-surface::-webkit-scrollbar {

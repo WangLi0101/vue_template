@@ -130,19 +130,6 @@
             <el-icon><More /></el-icon>
           </button>
         </div>
-
-        <button
-          :class="[
-            'theme-toggle-btn',
-            isDarkMode ? 'theme-toggle-btn-dark' : 'theme-toggle-btn-light'
-          ]"
-          @click="emit('toggle-theme')"
-        >
-          <span class="text-lg">{{ isDarkMode ? "🌙" : "☀️" }}</span>
-          <span class="hidden sm:inline">{{
-            isDarkMode ? "亮色模式" : "暗色模式"
-          }}</span>
-        </button>
       </div>
     </div>
   </div>
@@ -172,7 +159,6 @@ const emit = defineEmits<{
   (e: "call", isVideo: boolean): void;
   (e: "test-ice"): void;
   (e: "more"): void;
-  (e: "toggle-theme"): void;
 }>();
 
 const { isDarkMode, selectedUser, showChatArea } = toRefs(props);
@@ -368,45 +354,82 @@ const dockBtnClasses = computed(() => [
   }
 }
 
-.theme-toggle-btn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border-radius: 999px;
-  border: 1px solid transparent;
-  background-color: rgba(241, 245, 249, 0.6);
-  color: #1f2937;
-  font-size: 14px;
-  font-weight: 600;
-  transition: all 0.2s ease;
-  backdrop-filter: blur(10px);
-
-  &:hover {
-    background-color: rgba(241, 245, 249, 0.8);
-    border-color: rgba(148, 163, 184, 0.3);
+@media (max-width: 1023px) {
+  .chat-header {
+    padding: 16px clamp(16px, 6vw, 24px);
   }
 }
 
-.theme-toggle-btn-dark {
-  background: rgba(15, 23, 42, 0.5);
-  color: #e2e8f0;
-  border-color: rgba(148, 163, 184, 0.1);
+@media (max-width: 767px) {
+  .chat-header {
+    padding: 14px 16px;
+    gap: 12px;
+  }
 
-  &:hover {
-    background: rgba(129, 140, 248, 0.2);
-    border-color: rgba(129, 140, 248, 0.3);
+  .header-content {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .header-actions {
+    width: 100%;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .control-dock {
+    flex: 1;
+    width: 100%;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 0.35rem 0.6rem;
+  }
+
+  .dock-btn {
+    width: 36px;
+    height: 36px;
+  }
+
+  .user-avatar {
+    width: 2.65rem;
+    height: 2.65rem;
+    font-size: 1rem;
+  }
+
+  .status-dot {
+    width: 0.75rem;
+    height: 0.75rem;
+  }
+
+  .theme-toggle-btn {
+    padding: 0.55rem 0.8rem;
+    gap: 6px;
   }
 }
 
-.theme-toggle-btn-light {
-  background: rgba(241, 245, 249, 0.9);
-  color: #1f2937;
-  border-color: rgba(148, 163, 184, 0.2);
+@media (max-width: 480px) {
+  .header-actions {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
 
-  &:hover {
-    background: rgba(129, 140, 248, 0.1);
-    border-color: rgba(129, 140, 248, 0.2);
+  .control-dock {
+    justify-content: center;
+    gap: 12px;
+    padding: 0.4rem 0.6rem;
+    flex-wrap: wrap;
+  }
+
+  .dock-btn {
+    width: 34px;
+    height: 34px;
+  }
+
+  .theme-toggle-btn {
+    width: 100%;
+    justify-content: center;
   }
 }
 </style>

@@ -11,18 +11,7 @@
         isDarkMode ? 'composer-inner-dark' : 'composer-inner-light'
       ]"
     >
-      <button
-        :class="[
-          'icon-button',
-          isDarkMode ? 'icon-button-dark' : 'icon-button-light'
-        ]"
-        @click="triggerFilePicker"
-        title="添加附件"
-      >
-        <el-icon><Plus /></el-icon>
-      </button>
-
-      <div class="flex-1">
+      <div class="composer-editor flex-1">
         <el-input
           :model-value="modelValue"
           @update:model-value="value => emit('update:modelValue', value)"
@@ -41,6 +30,7 @@
           'icon-button file',
           isDarkMode ? 'icon-button-file-dark' : 'icon-button-file-light'
         ]"
+        type="button"
         @click="triggerFilePicker"
         title="发送文件"
       >
@@ -50,13 +40,18 @@
       <button
         :class="[
           'send-button',
-          isDarkMode ? 'send-button-dark' : 'send-button-light'
+          isDarkMode ? 'send-button-dark' : 'send-button-light',
+          canSend && characterCount <= messageLimit
+            ? 'send-button-active'
+            : 'send-button-disabled'
         ]"
-        :disabled="!canSend"
+        type="button"
+        :disabled="!canSend || characterCount > messageLimit"
+        :aria-disabled="(!canSend || characterCount > messageLimit).toString()"
         @click="emitSend"
       >
         <el-icon class="mr-1 text-base"><Promotion /></el-icon>
-        <span class="hidden xs:inline">发送</span>
+        <span class="hidden sm:inline">发送</span>
       </button>
 
       <input
@@ -71,7 +66,7 @@
 
 <script setup lang="ts">
 import { computed, ref, toRefs } from "vue";
-import { Document, Plus, Promotion } from "@element-plus/icons-vue";
+import { Document, Promotion } from "@element-plus/icons-vue";
 
 const props = defineProps<{ modelValue: string; isDarkMode: boolean }>();
 
@@ -84,15 +79,19 @@ const emit = defineEmits<{
 const { modelValue, isDarkMode } = toRefs(props);
 
 const fileInputRef = ref<HTMLInputElement | null>(null);
+const messageLimit = 500;
+
+const characterCount = computed(() => modelValue.value.length);
 
 const canSend = computed(() => modelValue.value.trim().length > 0);
 
 const emitSend = () => {
-  if (!canSend.value) return;
+  if (!canSend.value || characterCount.value > messageLimit) return;
   emit("send");
 };
 
 const handleEnter = () => {
+  if (characterCount.value > messageLimit) return;
   emitSend();
 };
 
@@ -115,6 +114,7 @@ const handleFileChange = (event: Event) => {
 <style scoped lang="scss">
 .composer-shell {
   padding: clamp(14px, 3vw, 24px);
+  padding-bottom: calc(clamp(14px, 3vw, 24px) + env(safe-area-inset-bottom, 0));
   border-top: 1px solid transparent;
   backdrop-filter: blur(26px);
   transition:
@@ -152,6 +152,60 @@ const handleFileChange = (event: Event) => {
     border-color 0.3s ease;
 }
 
+.composer-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.composer-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(100, 116, 139, 0.8);
+}
+
+.composer-inner-dark .composer-meta {
+  color: rgba(203, 213, 225, 0.75);
+}
+
+.composer-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.composer-count {
+  font-weight: 600;
+  color: rgba(51, 65, 85, 0.55);
+}
+
+.composer-inner-dark .composer-count {
+  color: rgba(226, 232, 240, 0.7);
+}
+
+.composer-count-warning {
+  color: #f59e0b;
+}
+
+.composer-inner-dark .composer-count-warning {
+  color: #facc15;
+}
+
+.composer-count-limit {
+  color: #f97316;
+}
+
+.composer-inner-dark .composer-count-limit {
+  color: #fb7185;
+}
+
 .composer-inner-dark {
   background: rgba(15, 23, 42, 0.6);
   border-color: rgba(148, 163, 184, 0.15);
@@ -173,6 +227,7 @@ const handleFileChange = (event: Event) => {
   border-radius: 16px;
   border: 1px solid transparent;
   transition: all 0.2s ease;
+  flex-shrink: 0;
 }
 
 .icon-button-dark {
@@ -273,13 +328,24 @@ const handleFileChange = (event: Event) => {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 0 18px;
+  padding: 0 14px;
   height: 42px;
   border-radius: 18px;
   font-weight: 600;
   letter-spacing: 0.04em;
   border: none;
   transition: all 0.2s ease;
+  flex: 0 0 auto;
+  min-width: 44px;
+}
+
+.send-button-active {
+  cursor: pointer;
+}
+
+.send-button-disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .send-button-dark {
@@ -299,7 +365,6 @@ const handleFileChange = (event: Event) => {
   &:disabled {
     background: rgba(148, 163, 184, 0.22);
     box-shadow: none;
-    cursor: not-allowed;
   }
 }
 
@@ -321,7 +386,51 @@ const handleFileChange = (event: Event) => {
     background: rgba(148, 163, 184, 0.3);
     color: rgba(71, 85, 105, 0.7);
     box-shadow: none;
-    cursor: not-allowed;
+  }
+}
+
+@media (max-width: 767px) {
+  .composer-shell {
+    padding: 12px 16px;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom, 0));
+  }
+
+  .composer-inner {
+    gap: 10px;
+    padding: 12px 14px;
+  }
+
+  .composer-meta {
+    font-size: 10px;
+    gap: 2px;
+  }
+
+  .send-button {
+    padding: 0 12px;
+    height: 38px;
+    min-width: 40px;
+  }
+
+  .icon-button,
+  .icon-button.file {
+    width: 38px;
+    height: 38px;
+    border-radius: 14px;
+  }
+
+  .send-button {
+    height: 38px;
+  }
+}
+
+@media (max-width: 480px) {
+  .composer-inner {
+    gap: 8px;
+    padding: 12px;
+  }
+
+  .composer-meta {
+    display: none;
   }
 }
 </style>

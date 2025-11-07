@@ -15,7 +15,12 @@ import {
   getLocalStream,
   logConnectionDetails
 } from "@/utils/rtc";
-import { downloadFile, receiveFile, sendFileInChunks } from "@/utils/file";
+import {
+  downloadFile,
+  receiveFile,
+  sendFileInChunks,
+  FILE_MESSAGE_TYPE
+} from "@/utils/file";
 import type VideoDialog from "../components/videoDialog.vue";
 import type { Ref } from "vue";
 
@@ -86,6 +91,9 @@ export function useRtcCommunication({
   let localStream: MediaStream | null = null;
   const pc = ref<RTCPeerConnection | null>(null);
   let channel: RTCDataChannel | null = null;
+  let sendingAbortController: AbortController | null = null;
+  let shouldCloseChannelAfterCancel = false;
+  let pendingCancelReason: string | null = null;
   const pendingIceCandidates: RTCIceCandidateInit[] = [];
 
   const peerConnection = pc;
@@ -113,11 +121,61 @@ export function useRtcCommunication({
     }
   };
 
+  const cleanupFileSending = ({
+    hideDialog = true,
+    closeChannel = false,
+    resetProgress = true
+  }: {
+    hideDialog?: boolean;
+    closeChannel?: boolean;
+    resetProgress?: boolean;
+  } = {}) => {
+    if (hideDialog) {
+      sendingFileDialogVisible.value = false;
+    }
+
+    if (resetProgress) {
+      sendingProgress.value = 0;
+    }
+
+    sendingFileInfo.value = null;
+
+    if (channel) {
+      channel.onopen = null;
+      channel.onerror = null;
+      channel.onclose = null;
+
+      if (closeChannel && channel.readyState !== "closed") {
+        try {
+          channel.close();
+        } catch (error) {
+          console.warn("关闭数据通道失败:", error);
+        }
+      }
+
+      channel = null;
+    }
+
+    pendingCancelReason = null;
+    sendingAbortController = null;
+    shouldCloseChannelAfterCancel = false;
+
+    destoryPc();
+    callState.value = CallState.IDLE;
+  };
+
   // 清理本地媒体流
   const cleanupLocalStream = () => {
     if (!localStream) return;
     localStream.getTracks().forEach(track => track.stop());
     localStream = null;
+  };
+
+  const resetFileReceiveState = () => {
+    fileDialogVisible.value = false;
+    fileProgress.value = 0;
+    receivedFileInfo.value = null;
+    receivedFile.value = null;
   };
 
   const initPc = () => {
@@ -251,6 +309,15 @@ export function useRtcCommunication({
         }
         break;
       case "reject":
+        if (
+          sendingFileDialogVisible.value &&
+          control.senderId === currentCallUserId.value
+        ) {
+          ElMessage.warning("对方拒绝接收文件");
+          cleanupFileSending({ closeChannel: true });
+          return;
+        }
+
         if (callState.value === CallState.CALLING) {
           callState.value = CallState.REJECTED;
           ElMessage.warning("对方拒绝了通话");
@@ -352,14 +419,33 @@ export function useRtcCommunication({
           }
 
           setTimeout(() => {
-            fileDialogVisible.value = false;
-            fileProgress.value = 0;
-            receivedFileInfo.value = null;
-            receivedFile.value = null;
-            dataChannel.close();
+            resetFileReceiveState();
+            if (dataChannel.readyState !== "closed") {
+              dataChannel.close();
+            }
             destoryPc();
             callState.value = CallState.IDLE;
           }, 1000);
+        },
+        reason => {
+          const message =
+            typeof reason === "string" && reason.trim()
+              ? reason.trim()
+              : "对方取消了文件发送";
+          ElMessage.info(message);
+
+          resetFileReceiveState();
+
+          if (dataChannel.readyState !== "closed") {
+            try {
+              dataChannel.close();
+            } catch (error) {
+              console.warn("关闭接收数据通道失败:", error);
+            }
+          }
+
+          destoryPc();
+          callState.value = CallState.IDLE;
         }
       );
 
@@ -477,6 +563,24 @@ export function useRtcCommunication({
   const sendFile = async (file: File) => {
     if (!selectedUser.value) return;
 
+    if (!file) {
+      ElMessage.error("请选择要发送的文件");
+      return;
+    }
+
+    if (sendingAbortController && !sendingAbortController.signal.aborted) {
+      ElMessage.warning("已有文件正在发送，请稍后重试");
+      return;
+    }
+
+    if (!Number.isFinite(file.size) || file.size < 0) {
+      ElMessage.error("文件大小无效，无法发送");
+      return;
+    }
+
+    pendingCancelReason = null;
+    shouldCloseChannelAfterCancel = false;
+
     sendingFileInfo.value = {
       name: file.name,
       type: file.type,
@@ -486,45 +590,176 @@ export function useRtcCommunication({
     sendingFileDialogVisible.value = true;
 
     initPc();
-    channel = createChannel(pc.value!, "file");
-    currentCallUserId.value = selectedUser.value.id;
 
-    if (channel) {
-      channel.onopen = async () => {
-        try {
-          await sendFileInChunks(file, channel!, progress => {
-            sendingProgress.value = progress;
-          });
-
-          setTimeout(() => {
-            sendingFileDialogVisible.value = false;
-            sendingProgress.value = 0;
-            sendingFileInfo.value = null;
-            channel?.close();
-            channel = null;
-            destoryPc();
-            callState.value = CallState.IDLE;
-          }, 1000);
-        } catch (error) {
-          console.error("发送文件失败:", error);
-          ElMessage.error("文件传输失败");
-          sendingFileDialogVisible.value = false;
-          sendingProgress.value = 0;
-          sendingFileInfo.value = null;
-        }
-      };
-
-      channel.onerror = error => {
-        console.error("数据通道错误:", error);
-        ElMessage.error("文件传输错误");
-        sendingFileDialogVisible.value = false;
-        sendingProgress.value = 0;
-        sendingFileInfo.value = null;
-      };
+    if (!pc.value) {
+      ElMessage.error("无法初始化传输信道");
+      cleanupFileSending();
+      return;
     }
 
-    const offer = await createOffer(pc.value!);
-    sendOffer(offer, selectedUser.value.id, "file");
+    // 创建数据通道
+    channel = createChannel(pc.value!, "file");
+    if (!channel) {
+      ElMessage.error("无法创建数据通道");
+      cleanupFileSending();
+      return;
+    }
+
+    currentCallUserId.value = selectedUser.value.id;
+    // 创建发送文件的 abort controller
+    sendingAbortController = new AbortController();
+
+    let hasNotifiedSendingError = false;
+    // 通知发送文件错误
+    const notifySendingError = (message: string) => {
+      // 如果已经通知过错误，或者已经关闭了数据通道，则返回
+      if (shouldCloseChannelAfterCancel || hasNotifiedSendingError) return;
+      hasNotifiedSendingError = true;
+      ElMessage.error(message);
+    };
+
+    // 数据通道打开
+    channel.onopen = async () => {
+      if (!channel) return;
+
+      // 如果发送文件的 abort controller 已经取消，或者数据通道已经关闭，则发送取消通知
+      if (
+        sendingAbortController?.signal.aborted ||
+        shouldCloseChannelAfterCancel
+      ) {
+        const abortSignal = sendingAbortController?.signal as AbortSignal & {
+          reason?: unknown;
+        };
+        const reasonFromSignal =
+          typeof abortSignal?.reason === "string" && abortSignal.reason.trim()
+            ? abortSignal.reason.trim()
+            : pendingCancelReason || "sender-cancel";
+
+        try {
+          channel.send(
+            JSON.stringify({
+              type: FILE_MESSAGE_TYPE.CANCEL,
+              reason: reasonFromSignal
+            })
+          );
+        } catch (error) {
+          console.warn("发送取消通知失败:", error);
+        } finally {
+          cleanupFileSending({ hideDialog: false, closeChannel: true });
+        }
+        return;
+      }
+
+      try {
+        // 发送文件
+        await sendFileInChunks(
+          file,
+          channel,
+          progress => {
+            sendingProgress.value = progress;
+          },
+          { signal: sendingAbortController?.signal }
+        );
+
+        setTimeout(() => {
+          cleanupFileSending({ closeChannel: true });
+        }, 1000);
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          console.info("文件发送已取消:", error);
+        } else {
+          console.error("发送文件失败:", error);
+          notifySendingError("文件传输失败");
+        }
+
+        cleanupFileSending({ closeChannel: true });
+      }
+    };
+
+    // 数据通道关闭
+    channel.onclose = () => {
+      if (shouldCloseChannelAfterCancel) {
+        cleanupFileSending({ hideDialog: false, closeChannel: false });
+        return;
+      }
+
+      if (sendingProgress.value < 100) {
+        ElMessage.warning("文件传输已中断");
+      }
+
+      cleanupFileSending({ closeChannel: false });
+    };
+
+    // 数据通道错误
+    channel.onerror = event => {
+      console.error("数据通道错误:", event);
+      notifySendingError("文件传输错误");
+      cleanupFileSending({ hideDialog: false, closeChannel: true });
+    };
+
+    try {
+      // 创建文件传输 offer
+      const offer = await createOffer(pc.value!);
+      sendOffer(offer, selectedUser.value.id, "file");
+    } catch (error) {
+      console.error("创建文件传输 offer 失败:", error);
+      notifySendingError("无法发起文件传输");
+      cleanupFileSending({ closeChannel: true });
+    }
+  };
+
+  const cancelSendingFile = (reason?: string) => {
+    if (!channel && !sendingAbortController) {
+      ElMessage.info("当前没有正在发送的文件");
+      return;
+    }
+
+    if (
+      shouldCloseChannelAfterCancel ||
+      sendingAbortController?.signal.aborted
+    ) {
+      ElMessage.info("文件发送正在取消，请稍候");
+      return;
+    }
+
+    const normalizedReason =
+      typeof reason === "string" && reason.trim()
+        ? reason.trim()
+        : "sender-cancel";
+
+    pendingCancelReason = normalizedReason;
+    shouldCloseChannelAfterCancel = true;
+
+    sendingFileDialogVisible.value = false;
+    sendingProgress.value = 0;
+    sendingFileInfo.value = null;
+
+    if (sendingAbortController && !sendingAbortController.signal.aborted) {
+      sendingAbortController.abort(normalizedReason);
+    } else if (channel) {
+      if (channel.readyState === "open") {
+        try {
+          channel.send(
+            JSON.stringify({
+              type: FILE_MESSAGE_TYPE.CANCEL,
+              reason: normalizedReason
+            })
+          );
+        } catch (error) {
+          console.warn("发送取消通知失败:", error);
+        } finally {
+          cleanupFileSending({ hideDialog: false, closeChannel: true });
+        }
+      } else if (
+        channel.readyState === "closing" ||
+        channel.readyState === "closed"
+      ) {
+        cleanupFileSending();
+      }
+      // 如果是 connecting 状态，等待 onopen 后发送取消通知
+    }
+
+    ElMessage.info("已取消文件发送");
   };
 
   onUnmounted(() => {
@@ -550,6 +785,7 @@ export function useRtcCommunication({
     rejectCall,
     handleHangUp,
     sendFile,
+    cancelSendingFile,
     fileDialogVisible,
     fileProgress,
     receivedFileInfo,

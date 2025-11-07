@@ -1,13 +1,13 @@
 <template>
   <div :class="containerClasses">
-    <div class="px-6 pt-6 pb-4">
+    <div class="px-4 pt-5 pb-4 sm:px-6 sm:pt-6">
       <div
         :class="[
           'sidebar-card',
           isDarkMode ? 'sidebar-card-dark' : 'sidebar-card-light'
         ]"
       >
-        <div class="flex items-center justify-between">
+        <div class="flex items-center justify-between gap-3">
           <div class="flex items-center space-x-3">
             <div class="avatar-shell">
               <el-icon class="text-2xl">
@@ -25,6 +25,28 @@
               </h2>
             </div>
           </div>
+          <button
+            type="button"
+            :class="[
+              'theme-toggle-btn',
+              isDarkMode ? 'theme-toggle-btn-dark' : 'theme-toggle-btn-light'
+            ]"
+            :data-mode="isDarkMode ? 'dark' : 'light'"
+            :aria-label="themeToggleLabel"
+            @click="emit('toggle-theme')"
+          >
+            <span class="theme-toggle-icon">
+              <el-icon>
+                <component :is="themeToggleIcon" />
+              </el-icon>
+            </span>
+            <span
+              class="theme-toggle-text hidden xl:inline"
+              :data-mode="isDarkMode ? 'dark' : 'light'"
+            >
+              {{ themeToggleText }}
+            </span>
+          </button>
         </div>
 
         <div
@@ -44,7 +66,7 @@
       </div>
     </div>
 
-    <div class="px-6 pb-4">
+    <div class="px-4 pb-4 sm:px-6">
       <div
         :class="[
           'search-card',
@@ -67,8 +89,14 @@
       </div>
     </div>
 
-    <div class="flex-1 overflow-y-auto px-6 pb-6 custom-scrollbar">
-      <transition-group name="fade-list" tag="div" class="space-y-3">
+    <div
+      class="flex-1 overflow-y-auto px-4 pb-24 md:pb-6 sm:px-6 custom-scrollbar"
+    >
+      <transition-group
+        name="fade-list"
+        tag="div"
+        class="space-y-2 sm:space-y-3"
+      >
         <div
           v-for="user in filteredUsers"
           :key="user.id"
@@ -182,7 +210,9 @@ import { computed, toRefs } from "vue";
 import {
   ChatDotRound,
   Search,
-  User as UserIcon
+  User as UserIcon,
+  Moon,
+  Sunny
 } from "@element-plus/icons-vue";
 import type { User } from "@/composables/useSocket";
 import { getUserAvatarColor } from "@/utils";
@@ -200,6 +230,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: "update:searchQuery", value: string): void;
   (e: "select", userId: string): void;
+  (e: "toggle-theme"): void;
 }>();
 
 const {
@@ -221,6 +252,14 @@ const containerClasses = computed(() => [
     ? "border-r border-white/10 bg-slate-900/35 backdrop-blur-2xl shadow-[0_25px_60px_rgba(15,23,42,0.45)]"
     : "border-r border-slate-200/80 bg-white/80 backdrop-blur-xl shadow-[0_20px_45px_rgba(148,163,184,0.35)]"
 ]);
+
+const themeToggleIcon = computed(() => (isDarkMode.value ? Sunny : Moon));
+const themeToggleLabel = computed(() =>
+  isDarkMode.value ? "切换至亮色" : "切换至暗色"
+);
+const themeToggleText = computed(() =>
+  isDarkMode.value ? "暗色模式" : "亮色模式"
+);
 </script>
 
 <style scoped lang="scss">
@@ -344,6 +383,116 @@ const containerClasses = computed(() => [
 .contact-card {
   padding: 16px;
   backdrop-filter: blur(18px);
+}
+
+.theme-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.22s ease;
+  backdrop-filter: blur(14px);
+  flex-shrink: 0;
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.35);
+  }
+}
+
+.theme-toggle-btn-dark {
+  background: rgba(15, 23, 42, 0.55);
+  color: #e2e8f0;
+  border-color: rgba(99, 102, 241, 0.25);
+
+  &:hover {
+    background: rgba(99, 102, 241, 0.45);
+    border-color: rgba(129, 140, 248, 0.5);
+    box-shadow: 0 16px 30px rgba(15, 23, 42, 0.45);
+  }
+}
+
+.theme-toggle-btn-light {
+  background: rgba(241, 245, 249, 0.9);
+  color: #1f2937;
+  border-color: rgba(148, 163, 184, 0.3);
+
+  &:hover {
+    background: rgba(129, 140, 248, 0.18);
+    border-color: rgba(129, 140, 248, 0.35);
+    box-shadow: 0 16px 28px rgba(148, 163, 184, 0.32);
+  }
+}
+
+.theme-toggle-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(241, 245, 249, 0.85);
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.35);
+  transition: all 0.22s ease;
+}
+
+.theme-toggle-btn-dark .theme-toggle-icon {
+  background: rgba(15, 23, 42, 0.85);
+  box-shadow: inset 0 0 0 1px rgba(129, 140, 248, 0.5);
+}
+
+.theme-toggle-text {
+  letter-spacing: 0.04em;
+  transition: color 0.2s ease;
+}
+
+.theme-toggle-text[data-mode="dark"] {
+  color: rgba(226, 232, 240, 0.85);
+}
+
+.theme-toggle-text[data-mode="light"] {
+  color: rgba(30, 41, 59, 0.85);
+}
+
+@media (max-width: 767px) {
+  .sidebar-card {
+    border-radius: 20px;
+    padding: 18px;
+  }
+
+  .avatar-shell {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+
+  .search-card {
+    padding: 8px 12px;
+  }
+
+  .contact-card {
+    padding: 12px;
+    border-radius: 18px;
+  }
+
+  .theme-toggle-btn {
+    padding: 0.5rem 0.6rem;
+    gap: 6px;
+  }
+
+  .theme-toggle-icon {
+    width: 28px;
+    height: 28px;
+  }
+
+  .empty-state {
+    margin-top: 24px;
+    padding: 28px 24px;
+  }
 }
 
 .empty-state {
