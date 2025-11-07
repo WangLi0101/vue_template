@@ -85,22 +85,35 @@ export async function sendFileInChunks(
       return;
     }
 
-    let offset = 0;
-    let isSending = true;
-    let isFinished = false;
-    let isCancelled = false;
-    let lastProgressUpdate = Date.now();
-    let lastReportedProgress = -1;
-    let cancelNotified = false;
-
     const bufferThreshold = Math.max(DEFAULT_BUFFER_THRESHOLD, chunkSize * 4);
 
+    let offset = 0;
+    let lastProgressUpdate = Date.now();
+    let lastReportedProgress = -1;
+    let pumping = false;
+
+    const state = {
+      done: false,
+      cancelled: false,
+      cancelNotified: false
+    };
+
     const cleanup = () => {
-      isSending = false;
       channel.onbufferedamountlow = null;
       channel.removeEventListener("close", handleClose);
       channel.removeEventListener("error", handleError as EventListener);
       signal?.removeEventListener("abort", handleAbort);
+    };
+
+    const finalize = (handler: () => void) => {
+      if (state.done) return;
+      state.done = true;
+      cleanup();
+      handler();
+    };
+
+    const fail = (error: Error) => {
+      finalize(() => reject(error));
     };
 
     const safeSend = (payload: ArrayBuffer | string) => {
@@ -120,43 +133,45 @@ export async function sendFileInChunks(
       safeSend(JSON.stringify(message));
     };
 
-    const notifyCancel = (reason?: string) => {
-      if (cancelNotified || channel.readyState !== "open") return;
+    const sendCancelMessage = (reason?: string) => {
+      if (state.cancelNotified || channel.readyState !== "open") return;
       try {
         sendJson({ type: FILE_MESSAGE_TYPE.CANCEL, reason });
-        cancelNotified = true;
+        state.cancelNotified = true;
       } catch (error) {
         console.warn("发送取消通知失败:", error);
       }
     };
 
+    const cancel = (reason?: string) => {
+      if (state.done) return;
+      state.cancelled = true;
+      sendCancelMessage(reason);
+      finalize(() => reject(new DOMException("文件发送已取消", "AbortError")));
+    };
+
     const handleAbort = () => {
-      if (isFinished || isCancelled) return;
-      isCancelled = true;
+      if (state.done) return;
       const abortSignal = signal as
         | (AbortSignal & { reason?: unknown })
         | undefined;
       const abortReason = abortSignal?.reason;
-      notifyCancel(
+      const normalizedReason =
         typeof abortReason === "string" && abortReason.trim()
-          ? abortReason
-          : "sender-abort"
-      );
-      cleanup();
-      reject(new DOMException("文件发送已取消", "AbortError"));
+          ? abortReason.trim()
+          : "sender-abort";
+      cancel(normalizedReason);
     };
 
     const handleClose = () => {
-      if (isFinished || isCancelled) return;
-      cleanup();
-      reject(new Error("文件传输连接已关闭"));
+      if (state.done) return;
+      fail(new Error("文件传输连接已关闭"));
     };
 
     const handleError = (event: Event) => {
-      if (isFinished || isCancelled) return;
+      if (state.done) return;
       console.error("数据通道错误:", event);
-      cleanup();
-      reject(new Error("文件传输错误"));
+      fail(new Error("文件传输错误"));
     };
 
     const updateProgress = (sentBytes: number) => {
@@ -180,72 +195,70 @@ export async function sendFileInChunks(
     };
 
     const pump = async (): Promise<void> => {
-      while (
-        isSending &&
-        offset < file.size &&
-        !isCancelled &&
-        channel.readyState === "open"
-      ) {
-        if (signal?.aborted) {
-          handleAbort();
-          return;
-        }
-
-        if (channel.bufferedAmount > bufferThreshold) {
-          isSending = false;
-          return;
-        }
-
-        try {
-          const slice = file.slice(offset, offset + chunkSize);
-          const buffer = await slice.arrayBuffer();
-
-          if (buffer.byteLength === 0) {
-            console.warn("读取到空的文件分片，提前结束传输");
-            break;
-          }
-
-          safeSend(buffer);
-          offset += buffer.byteLength;
-          updateProgress(offset);
-        } catch (error) {
-          console.error("发送文件分片失败:", error);
-
+      if (pumping || state.done) return;
+      pumping = true;
+      try {
+        while (
+          !state.done &&
+          !state.cancelled &&
+          offset < file.size &&
+          channel.readyState === "open"
+        ) {
           if (signal?.aborted) {
             handleAbort();
             return;
           }
 
-          if (channel.readyState !== "open") {
-            handleClose();
-            return;
+          if (channel.bufferedAmount > bufferThreshold) {
+            break;
           }
 
-          await new Promise(r => setTimeout(r, 500));
+          try {
+            const slice = file.slice(offset, offset + chunkSize);
+            const buffer = await slice.arrayBuffer();
+
+            if (buffer.byteLength === 0) {
+              console.warn("读取到空的文件分片，提前结束传输");
+              break;
+            }
+
+            safeSend(buffer);
+            offset += buffer.byteLength;
+            updateProgress(offset);
+          } catch (error) {
+            if (signal?.aborted) {
+              handleAbort();
+              return;
+            }
+
+            if (channel.readyState !== "open") {
+              handleClose();
+              return;
+            }
+
+            console.error("发送文件分片失败:", error);
+            await new Promise(r => setTimeout(r, 500));
+          }
         }
-      }
 
-      if (!isCancelled && offset >= file.size && !isFinished) {
-        isFinished = true;
-        updateProgress(file.size);
-
-        try {
-          sendJson({ type: FILE_MESSAGE_TYPE.COMPLETE });
-        } catch (error) {
-          cleanup();
-          reject(error as Error);
-          return;
+        if (!state.done && !state.cancelled && offset >= file.size) {
+          updateProgress(file.size);
+          try {
+            sendJson({ type: FILE_MESSAGE_TYPE.COMPLETE });
+          } catch (error) {
+            fail(error as Error);
+            return;
+          }
+          finalize(() => resolve());
         }
-
-        cleanup();
-        resolve();
+      } finally {
+        pumping = false;
       }
     };
 
     channel.bufferedAmountLowThreshold = bufferThreshold / 2;
     channel.onbufferedamountlow = () => {
-      if (!isSending && !isCancelled && channel.readyState === "open") {
-        isSending = true;
+      if (!state.done && !state.cancelled && channel.readyState === "open") {
         void pump();
       }
     };
@@ -272,17 +285,19 @@ export async function sendFileInChunks(
       }
 
       if (file.size === 0) {
-        isFinished = true;
-        sendJson({ type: FILE_MESSAGE_TYPE.COMPLETE });
-        cleanup();
-        resolve();
+        try {
+          sendJson({ type: FILE_MESSAGE_TYPE.COMPLETE });
+        } catch (error) {
+          fail(error as Error);
+          return;
+        }
+        finalize(() => resolve());
         return;
       }
 
       void pump();
     } catch (error) {
-      cleanup();
-      reject(error as Error);
+      fail(error as Error);
     }
   });
 }
